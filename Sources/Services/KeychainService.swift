@@ -1,50 +1,66 @@
 import Foundation
+import Security
 
 enum KeychainService {
-  private static let configDir = FileManager.default.homeDirectoryForCurrentUser
-    .appendingPathComponent(".config/lidguard")
-  private static let credentialsFile = configDir.appendingPathComponent("credentials.json")
-
-  private static func ensureConfigDir() {
-    try? FileManager.default.createDirectory(at: configDir, withIntermediateDirectories: true)
-  }
-
-  private static func loadCredentials() -> [String: String] {
-    guard let data = try? Data(contentsOf: credentialsFile),
-          let dict = try? JSONDecoder().decode([String: String].self, from: data) else {
-      return [:]
-    }
-    return dict
-  }
-
-  private static func saveCredentials(_ credentials: [String: String]) {
-    ensureConfigDir()
-    if let data = try? JSONEncoder().encode(credentials) {
-      try? data.write(to: credentialsFile, options: .atomic)
-    }
-  }
+  private static let serviceName = "com.akim.lidguard"
 
   @discardableResult
   static func save(key: String, value: String) -> Bool {
-    var credentials = loadCredentials()
-    credentials[key] = value
-    saveCredentials(credentials)
-    return true
+    guard let data = value.data(using: .utf8) else { return false }
+
+    let deleteQuery: [String: Any] = [
+      kSecClass as String: kSecClassGenericPassword,
+      kSecAttrService as String: serviceName,
+      kSecAttrAccount as String: key,
+    ]
+    SecItemDelete(deleteQuery as CFDictionary)
+
+    let addQuery: [String: Any] = [
+      kSecClass as String: kSecClassGenericPassword,
+      kSecAttrService as String: serviceName,
+      kSecAttrAccount as String: key,
+      kSecValueData as String: data,
+      kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock,
+    ]
+
+    return SecItemAdd(addQuery as CFDictionary, nil) == errSecSuccess
   }
 
   static func load(key: String) -> String? {
-    loadCredentials()[key]
+    let query: [String: Any] = [
+      kSecClass as String: kSecClassGenericPassword,
+      kSecAttrService as String: serviceName,
+      kSecAttrAccount as String: key,
+      kSecReturnData as String: true,
+      kSecMatchLimit as String: kSecMatchLimitOne,
+    ]
+
+    var result: AnyObject?
+    let status = SecItemCopyMatching(query as CFDictionary, &result)
+
+    guard status == errSecSuccess, let data = result as? Data else {
+      return nil
+    }
+    return String(data: data, encoding: .utf8)
   }
 
   @discardableResult
   static func delete(key: String) -> Bool {
-    var credentials = loadCredentials()
-    credentials.removeValue(forKey: key)
-    saveCredentials(credentials)
-    return true
+    let query: [String: Any] = [
+      kSecClass as String: kSecClassGenericPassword,
+      kSecAttrService as String: serviceName,
+      kSecAttrAccount as String: key,
+    ]
+
+    let status = SecItemDelete(query as CFDictionary)
+    return status == errSecSuccess || status == errSecItemNotFound
   }
 
   static func deleteAll() {
-    try? FileManager.default.removeItem(at: credentialsFile)
+    let query: [String: Any] = [
+      kSecClass as String: kSecClassGenericPassword,
+      kSecAttrService as String: serviceName,
+    ]
+    SecItemDelete(query as CFDictionary)
   }
 }

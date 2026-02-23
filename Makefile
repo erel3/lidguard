@@ -3,8 +3,8 @@ BUNDLE = dist/$(APP_NAME).app
 BUILD_DIR = .build/release
 VERSION_FILE = VERSION
 BUMP ?= patch
-CODESIGN_ID ?= LidGuard
-CODESIGN_REQ ?= designated => certificate leaf = H"9787B7F0A9496DF5757D22D586EA8C0735656867"
+CODESIGN_ID ?= Developer ID Application: Andrey Kim (73R36N2A46)
+CODESIGN_REQ ?= designated => anchor apple generic and certificate leaf[subject.OU] = "73R36N2A46"
 
 .PHONY: build run run-debug install release clean version icon
 
