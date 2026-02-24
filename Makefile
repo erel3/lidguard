@@ -5,6 +5,7 @@ VERSION_FILE = VERSION
 BUMP ?= patch
 CODESIGN_ID ?= Developer ID Application: Andrey Kim (73R36N2A46)
 CODESIGN_REQ ?= designated => anchor apple generic and certificate leaf[subject.OU] = "73R36N2A46"
+NOTARIZE_PROFILE ?= Notarize
 
 .PHONY: build run run-debug install release clean version icon
 
@@ -39,6 +40,7 @@ release:
 	@$(MAKE) _bump
 	@$(MAKE) build
 	@$(MAKE) _bundle SUFFIX=
+	@$(MAKE) _notarize
 	@VERSION=$$(cat $(VERSION_FILE)); \
 	TITLE="$${TITLE:-v$$VERSION}"; \
 	git add $(VERSION_FILE) && \
@@ -63,10 +65,19 @@ _bundle:
 	    Info.plist > $(BUNDLE)/Contents/Info.plist; \
 	cp Resources/AppIcon.icns $(BUNDLE)/Contents/Resources/ 2>/dev/null || true; \
 	codesign --force --sign "$(CODESIGN_ID)" --entitlements LidGuard.entitlements \
-		-o runtime --timestamp=none \
+		-o runtime --timestamp \
 		-r='$(CODESIGN_REQ)' \
 		$(BUNDLE); \
 	echo "Built: $(BUNDLE) v$$VERSION"
+
+_notarize:
+	@echo "Notarizing $(APP_NAME)..."; \
+	cd dist && zip -r $(APP_NAME)-notarize.zip $(APP_NAME).app && cd .. && \
+	xcrun notarytool submit dist/$(APP_NAME)-notarize.zip \
+		--keychain-profile "$(NOTARIZE_PROFILE)" --wait && \
+	xcrun stapler staple $(BUNDLE) && \
+	rm -f dist/$(APP_NAME)-notarize.zip && \
+	echo "Notarization complete"
 
 _bump:
 	@VERSION=$$(cat $(VERSION_FILE) | sed 's/-dev//'); \
