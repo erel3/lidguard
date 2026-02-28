@@ -68,6 +68,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // App menu
     let appMenuItem = NSMenuItem()
     let appMenu = NSMenu()
+    appMenu.addItem(NSMenuItem(title: "About \(Config.App.name)", action: #selector(showAbout), keyEquivalent: ""))
+    appMenu.addItem(.separator())
     appMenu.addItem(NSMenuItem(title: "Quit \(Config.App.name)", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
     appMenuItem.submenu = appMenu
     mainMenu.addItem(appMenuItem)
@@ -84,6 +86,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     editMenu.addItem(NSMenuItem(title: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a"))
     editMenuItem.submenu = editMenu
     mainMenu.addItem(editMenuItem)
+
+    // Help menu
+    let helpMenuItem = NSMenuItem()
+    let helpMenu = NSMenu(title: "Help")
+    helpMenu.addItem(NSMenuItem(title: "\(Config.App.name) on GitHub", action: #selector(openGitHub), keyEquivalent: ""))
+    helpMenu.addItem(NSMenuItem(title: "Report an Issue", action: #selector(openIssues), keyEquivalent: ""))
+    helpMenuItem.submenu = helpMenu
+    mainMenu.addItem(helpMenuItem)
 
     NSApp.mainMenu = mainMenu
   }
@@ -396,6 +406,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
   @objc private func showActivityLog() {
     ActivityLogWindowController.shared.show()
+  }
+
+  @objc private func showAbout() {
+    let credits = NSAttributedString(
+      string: "Laptop theft protection for macOS",
+      attributes: [.font: NSFont.systemFont(ofSize: 11), .foregroundColor: NSColor.secondaryLabelColor]
+    )
+    NSApp.orderFrontStandardAboutPanel(options: [
+      .applicationName: Config.App.name,
+      .applicationVersion: Config.App.version,
+      .version: "",
+      .credits: credits
+    ])
+    NSApp.activate(ignoringOtherApps: true)
+  }
+
+  @objc private func openGitHub() {
+    NSWorkspace.shared.open(URL(string: "https://github.com/Erel3/lidguard")!)
+  }
+
+  @objc private func openIssues() {
+    NSWorkspace.shared.open(URL(string: "https://github.com/Erel3/lidguard/issues")!)
   }
 
   func applicationWillTerminate(_ notification: Notification) {

@@ -25,19 +25,14 @@
 ## How It Works
 
 ```
-                    arm (menu / shortcut)          lid close / power disconnect
-  ┌──────────┐ ─────────────────────────▶ ┌─────────┐ ────────────────────────▶ ┌────────────┐
-  │ Disabled │                            │ Enabled │                           │ Theft Mode │
-  │          │ ◀───────────────────────── │         │ ◀──────────────────────── │            │
-  └──────────┘    disarm (Touch ID)       └─────────┘   Touch ID / Telegram    └────────────┘
-                                                                                      │
-                                                                                      ▼
-                                                                                📍 Location
-                                                                                📶 WiFi & IP
-                                                                                🔋 Battery
-                                                                                🔔 Telegram + Pushover
-                                                                                🚨 Siren alarm
-                                                                                🔒 Lock screen overlay
+ Disabled ──arm──▶ Enabled ──trigger──▶ Theft Mode
+    ◀──disarm───    ◀──authenticate───
+                                          ├─ 📍 Location
+    arm: menu, shortcut                   ├─ 📶 WiFi & IP
+    trigger: lid close, power disconnect  ├─ 🔋 Battery
+    authenticate: Touch ID, Telegram      ├─ 🔔 Alerts (Telegram + Pushover)
+    disarm: Touch ID                      ├─ 🚨 Siren alarm
+                                          └─ 🔒 Lock screen overlay
 ```
 
 When theft mode activates, LidGuard sends **tracking updates every 20 seconds** with location, IP, WiFi, and battery status — all controllable remotely via Telegram.
