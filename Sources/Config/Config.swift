@@ -34,7 +34,7 @@ enum Config {
   }
 
   enum GitHub {
-    static let releasesURL = "https://api.github.com/repos/Erel3/lidguard/releases/latest"
+    static let releasesURL = "https://api.github.com/repos/Erel3/lidguard/releases"
     static let autoCheckInterval: TimeInterval = 2 * 24 * 60 * 60  // 2 days
   }
 

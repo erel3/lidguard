@@ -95,11 +95,11 @@ final class UpdateService {
         return
       }
 
-      let release: GitHubRelease
+      let releases: [GitHubRelease]
       do {
-        release = try JSONDecoder().decode(GitHubRelease.self, from: data)
+        releases = try JSONDecoder().decode([GitHubRelease].self, from: data)
       } catch {
-        self.logger.error("Failed to parse GitHub release: \(error)")
+        self.logger.error("Failed to parse GitHub releases: \(error)")
         if !silent {
           DispatchQueue.main.async { self.showError("Could not parse GitHub response.") }
         }
@@ -107,10 +107,11 @@ final class UpdateService {
         return
       }
 
-      let remoteVersion = release.version
       let localVersion = Config.App.version
+      let newerReleases = releases.filter { self.isNewer($0.version, than: localVersion) }
+        .sorted { self.isNewer($0.version, than: $1.version) }  // newest first
 
-      guard self.isNewer(remoteVersion, than: localVersion) else {
+      guard let latest = newerReleases.first else {
         self.logger.info("App is up to date (\(localVersion))")
         if !silent {
           DispatchQueue.main.async { self.showUpToDate() }
@@ -120,14 +121,21 @@ final class UpdateService {
       }
 
       // Skip version check: silent auto-checks respect it, manual checks don't
-      if silent && self.settings.skippedVersion == remoteVersion {
-        self.logger.info("Skipping update to \(remoteVersion) (user skipped)")
+      if silent && self.settings.skippedVersion == latest.version {
+        self.logger.info("Skipping update to \(latest.version) (user skipped)")
         completion?()
         return
       }
 
+      // Combine changelogs from all newer releases
+      let combinedChangelog = newerReleases.map { release in
+        let header = "## v\(release.version)"
+        let body = release.body ?? "No release notes."
+        return "\(header)\n\(body)"
+      }.joined(separator: "\n\n")
+
       DispatchQueue.main.async {
-        self.showUpdateWindow(release: release)
+        self.showUpdateWindow(release: latest, changelog: combinedChangelog)
       }
       completion?()
     }.resume()
@@ -153,7 +161,7 @@ final class UpdateService {
 
   // MARK: - Update Window
 
-  private func showUpdateWindow(release: GitHubRelease) {
+  private func showUpdateWindow(release: GitHubRelease, changelog: String) {
     if let existing = updateWindow, existing.isVisible {
       existing.makeKeyAndOrderFront(nil)
       return
@@ -161,7 +169,7 @@ final class UpdateService {
 
     let view = UpdateView(
       version: release.version,
-      changelog: release.body ?? "No release notes.",
+      changelog: changelog,
       onInstall: { [weak self] in
         self?.installUpdate(release: release)
       },
