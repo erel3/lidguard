@@ -176,7 +176,7 @@ final class UpdateService {
 
     let window = NSPanel(
       contentRect: NSRect(x: 0, y: 0, width: 480, height: 360),
-      styleMask: [.titled, .closable, .hudWindow],
+      styleMask: [.titled, .closable, .nonactivatingPanel, .hudWindow],
       backing: .buffered,
       defer: false
     )
@@ -185,6 +185,7 @@ final class UpdateService {
     window.center()
     window.isReleasedWhenClosed = false
     window.level = .floating
+    window.hidesOnDeactivate = false
     window.makeKeyAndOrderFront(nil)
     NSApp.activate(ignoringOtherApps: true)
 
