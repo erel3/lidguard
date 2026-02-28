@@ -1,3 +1,4 @@
+import MarkdownUI
 import SwiftUI
 
 struct UpdateView: View {
@@ -26,10 +27,10 @@ struct UpdateView: View {
 
       // Changelog
       ScrollView {
-        Text(changelog)
-          .font(.system(.body, design: .monospaced))
+        Markdown(changelog)
+          .markdownTheme(.basic)
           .frame(maxWidth: .infinity, alignment: .leading)
-          .padding(8)
+          .padding(12)
       }
       .frame(maxHeight: .infinity)
       .background(Color(nsColor: .textBackgroundColor))
