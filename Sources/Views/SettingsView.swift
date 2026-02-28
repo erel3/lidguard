@@ -30,6 +30,8 @@ struct SettingsView: View {
   @State private var contactName: String = ""
   @State private var contactPhone: String = ""
   @State private var startAtLogin: Bool = false
+  @State private var autoUpdateEnabled: Bool = true
+  @State private var isCheckingForUpdates: Bool = false
 
   // Triggers
   @State private var triggerLidClose: Bool = true
@@ -168,6 +170,29 @@ struct SettingsView: View {
           .onChange(of: startAtLogin) { _, newValue in
             toggleLoginItem(newValue)
           }
+      }
+
+      Section {
+        Toggle("Automatically check for updates", isOn: $autoUpdateEnabled)
+        HStack {
+          Spacer()
+          if #available(macOS 26.0, *) {
+            Button(isCheckingForUpdates ? "Checking..." : "Check for Updates") {
+              checkForUpdates()
+            }
+            .buttonStyle(.glass)
+            .disabled(isCheckingForUpdates)
+          } else {
+            Button(isCheckingForUpdates ? "Checking..." : "Check for Updates") {
+              checkForUpdates()
+            }
+            .buttonStyle(.borderless)
+            .disabled(isCheckingForUpdates)
+          }
+          Spacer()
+        }
+      } header: {
+        Text("Updates")
       }
 
       Section {
@@ -354,6 +379,7 @@ struct SettingsView: View {
     pushoverApiToken = settings.pushoverApiToken ?? ""
     pushoverEnabled = settings.pushoverEnabled
     startAtLogin = loginItem.isEnabled
+    autoUpdateEnabled = settings.autoUpdateEnabled
     sleepPreventionInstalled = pmset.isInstalled()
     selectedAlarmSound = settings.alarmSound
     behaviorAutoAlarm = settings.behaviorAutoAlarm
@@ -394,6 +420,13 @@ struct SettingsView: View {
     settings.behaviorLockScreen = behaviorLockScreen
     settings.behaviorAlarm = behaviorAlarm
 
+    settings.autoUpdateEnabled = autoUpdateEnabled
+    if autoUpdateEnabled {
+      UpdateService.shared.startPeriodicChecks()
+    } else {
+      UpdateService.shared.stopPeriodicChecks()
+    }
+
     ActivityLog.logAsync(.system, "Settings saved")
   }
 
@@ -417,6 +450,15 @@ struct SettingsView: View {
       _ = loginItem.enable()
     } else {
       _ = loginItem.disable()
+    }
+  }
+
+  private func checkForUpdates() {
+    isCheckingForUpdates = true
+    UpdateService.shared.checkForUpdates(silent: false) {
+      DispatchQueue.main.async {
+        isCheckingForUpdates = false
+      }
     }
   }
 

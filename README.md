@@ -25,18 +25,19 @@
 ## How It Works
 
 ```
-┌──────────┐     lid close / power disconnect     ┌────────────┐
-│ Disabled │ ──────────────────────────────────▶  │ Theft Mode │
-│          │ ◀──────────────────────────────────  │            │
-└──────────┘     Touch ID / Telegram /stop        └────────────┘
-                                                        │
-                                                        ▼
-                                                  📍 Location
-                                                  📶 WiFi & IP
-                                                  🔋 Battery
-                                                  🔔 Telegram alert
-                                                  🚨 Siren alarm
-                                                  🔒 Lock screen
+                    arm (menu / shortcut)          lid close / power disconnect
+  ┌──────────┐ ─────────────────────────▶ ┌─────────┐ ────────────────────────▶ ┌────────────┐
+  │ Disabled │                            │ Enabled │                           │ Theft Mode │
+  │          │ ◀───────────────────────── │         │ ◀──────────────────────── │            │
+  └──────────┘    disarm (Touch ID)       └─────────┘   Touch ID / Telegram    └────────────┘
+                                                                                      │
+                                                                                      ▼
+                                                                                📍 Location
+                                                                                📶 WiFi & IP
+                                                                                🔋 Battery
+                                                                                🔔 Telegram + Pushover
+                                                                                🚨 Siren alarm
+                                                                                🔒 Lock screen overlay
 ```
 
 When theft mode activates, LidGuard sends **tracking updates every 20 seconds** with location, IP, WiFi, and battery status — all controllable remotely via Telegram.
@@ -47,12 +48,14 @@ When theft mode activates, LidGuard sends **tracking updates every 20 seconds** 
 📍 **Device Tracking** — location, IP, WiFi, battery every 20s\
 📲 **Telegram & Pushover** — instant alerts with full device info\
 🎮 **Remote Control** — enable, disable, alarm, status via Telegram bot\
-🚨 **Alarm** — siren or system sounds at max volume (enforced, can't be silenced)\
+🚨 **Alarm** — synthesized siren or system sounds at max volume (enforced, can't be silenced)\
 😴 **Sleep Prevention** — IOKit assertions + `pmset disablesleep`\
-🔒 **Lock Screen** — fullscreen overlay via SkyLight private API\
+🔒 **Lock Screen** — fullscreen "STOLEN DEVICE" overlay with owner contact info\
 ⌨️ **Global Shortcut** — system-wide hotkey to arm/disarm\
-🔐 **Touch ID** — biometric auth for sensitive actions\
-🛑 **Shutdown Blocking** — prevents force quit during theft mode
+🔐 **Touch ID** — biometric auth for settings, disable, and quit\
+🛑 **Shutdown Blocking** — prevents force quit and shutdown during theft mode\
+🔄 **Auto-Update** — checks for new versions and installs with one click\
+🚀 **Launch at Login** — start protection automatically via macOS login items
 
 ## Install
 
@@ -67,14 +70,13 @@ git clone https://github.com/Erel3/lidguard.git
 cd lidguard
 make run            # build .app with -dev suffix and open
 make install        # install to /Applications
-make release        # bump version, build, tag, push, create GitHub release
 ```
 
 ## Setup
 
-On first launch, LidGuard opens Settings automatically.
+On first launch, LidGuard opens Settings automatically if no notification service is configured.
 
-### Telegram Bot (required)
+### Telegram Bot
 
 LidGuard uses a Telegram bot to send alerts and receive remote commands.
 
@@ -83,7 +85,7 @@ LidGuard uses a Telegram bot to send alerts and receive remote commands.
 3. Copy the **bot token** (looks like `123456789:ABCdefGHI...`)
 4. Send any message to your new bot, then open `https://api.telegram.org/bot<TOKEN>/getUpdates`
 5. Find your **chat ID** in the response JSON (`"chat":{"id":123456789}`)
-6. Paste both into LidGuard Settings → Telegram
+6. Paste both into LidGuard Settings → Notifications → Telegram
 
 > The bot only responds to your chat ID — no one else can control it.
 
@@ -94,15 +96,20 @@ LidGuard uses a Telegram bot to send alerts and receive remote commands.
 1. Create an account at [pushover.net](https://pushover.net) and install the mobile app
 2. Copy your **User Key** from the Pushover dashboard
 3. [Create an application](https://pushover.net/apps/build) to get an **API Token**
-4. Paste both into LidGuard Settings → Pushover
+4. Paste both into LidGuard Settings → Notifications → Pushover
 
-### Other Settings
+### Settings
 
-- **Triggers** — which events activate theft mode (lid close, power disconnect, power button)
-- **Behaviors** — sleep prevention, shutdown blocking, lock screen, alarm
-- **Global Shortcut** — system-wide hotkey to arm/disarm protection
+Settings are organized into four tabs:
 
-> Credentials are stored locally in `~/.config/lidguard/credentials.json` — never synced or uploaded.
+| Tab | What's there |
+|:----|:-------------|
+| **General** | Contact name & phone (shown on lock screen overlay), launch at login, auto-update, reset |
+| **Triggers** | Lid close, power disconnect, power button toggles; global shortcut config |
+| **Protection** | Sleep prevention, shutdown blocking, lock screen, alarm sound & volume, auto-alarm |
+| **Notifications** | Telegram bot token & chat ID, Pushover user key & API token, per-service toggles |
+
+> Credentials are stored in macOS Keychain — never synced or uploaded.
 
 ## Remote Commands
 
@@ -110,23 +117,38 @@ Control LidGuard from anywhere via your Telegram bot:
 
 | Command | Action |
 |:--------|:-------|
+| `/stop` or `/safe` | Deactivate theft mode |
 | `/enable` | Arm protection |
 | `/disable` | Disarm protection |
 | `/status` | Device info + current state |
 | `/alarm` | Trigger siren |
 | `/stopalarm` | Stop siren |
 
-## Permissions
+Telegram replies include context-aware button keyboards — no need to type commands manually.
 
-LidGuard requires these macOS permissions:
+## Menu Bar
+
+LidGuard lives in the menu bar with a custom laptop icon:
+
+| Icon | State |
+|:-----|:------|
+| Closed eye (dark) | Disabled |
+| Open eye (green) | Protection enabled |
+| Open eye (red) | Theft mode active |
+
+**Left-click** opens the full menu. **Right-click** quick-toggles protection.\
+Hold **Option** while the menu is open to reveal hidden items (test alert, activity log).
+
+## Permissions
 
 | Permission | Why |
 |:-----------|:----|
 | **Accessibility** | Global keyboard shortcut + power button monitoring |
 | **Location Services** | Device tracking in theft mode |
+| **Contacts** *(optional)* | Auto-fill owner phone number from your Me card |
 
 The app is **not sandboxed** — it needs direct access to IOKit, CoreAudio, and `pmset` for full theft protection.
 
 ## License
 
-[MIT](LICENSE) — do whatever you want with it.
+[MIT](LICENSE)

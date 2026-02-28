@@ -11,7 +11,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
   private let theftProtection = TheftProtectionService()
   private let authService = BiometricAuthService()
   private let pmsetService = PmsetService.shared
-  private var allowQuit = false  // Set true after Touch ID authentication
+  private var allowQuit = false
+
+  func allowQuitForUpdate() {
+    allowQuit = true
+  }
 
   func applicationDidFinishLaunching(_ notification: Notification) {
     setupMainMenu()
@@ -20,6 +24,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     theftProtection.start()
 
     ActivityLog.logAsync(.system, "LidGuard v\(Config.App.version) started")
+    UpdateService.shared.startPeriodicChecks()
 
     // Start with no Dock icon (protection disabled)
     NSApp.setActivationPolicy(.accessory)

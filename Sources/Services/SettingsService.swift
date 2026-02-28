@@ -30,6 +30,11 @@ final class SettingsService {
     static let behaviorAlarm = "lidguard.behaviorAlarm"
     static let behaviorAutoAlarm = "lidguard.behaviorAutoAlarm"
     static let alarmVolume = "lidguard.alarmVolume"
+
+    // Updates
+    static let autoUpdateEnabled = "lidguard.autoUpdateEnabled"
+    static let lastUpdateCheckDate = "lidguard.lastUpdateCheckDate"
+    static let skippedVersion = "lidguard.skippedVersion"
   }
 
   private enum KeychainKeys {
@@ -203,6 +208,23 @@ final class SettingsService {
     set { defaults.set(newValue, forKey: Keys.alarmVolume) }
   }
 
+  // MARK: - Updates
+
+  var autoUpdateEnabled: Bool {
+    get { defaults.object(forKey: Keys.autoUpdateEnabled) as? Bool ?? true }
+    set { defaults.set(newValue, forKey: Keys.autoUpdateEnabled) }
+  }
+
+  var lastUpdateCheckDate: Date? {
+    get { defaults.object(forKey: Keys.lastUpdateCheckDate) as? Date }
+    set { defaults.set(newValue, forKey: Keys.lastUpdateCheckDate) }
+  }
+
+  var skippedVersion: String? {
+    get { defaults.string(forKey: Keys.skippedVersion) }
+    set { defaults.set(newValue, forKey: Keys.skippedVersion) }
+  }
+
   // MARK: - Configuration Status
 
   func isConfigured() -> Bool {
@@ -230,6 +252,9 @@ final class SettingsService {
     defaults.removeObject(forKey: Keys.behaviorAlarm)
     defaults.removeObject(forKey: Keys.behaviorAutoAlarm)
     defaults.removeObject(forKey: Keys.alarmVolume)
+    defaults.removeObject(forKey: Keys.autoUpdateEnabled)
+    defaults.removeObject(forKey: Keys.lastUpdateCheckDate)
+    defaults.removeObject(forKey: Keys.skippedVersion)
 
     // Clear Keychain
     KeychainService.deleteAll()
