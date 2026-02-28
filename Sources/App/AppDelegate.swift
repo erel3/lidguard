@@ -138,6 +138,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     settingsItem.image = menuSymbol("gearshape", color: .secondaryLabelColor)
     menu.addItem(settingsItem)
 
+    let moreItem = NSMenuItem(title: "More", action: nil, keyEquivalent: "")
+    moreItem.image = menuSymbol("ellipsis.circle", color: .secondaryLabelColor)
+    let moreMenu = NSMenu()
+    moreMenu.addItem(NSMenuItem(title: "About \(Config.App.name)", action: #selector(showAbout), keyEquivalent: ""))
+    moreMenu.addItem(NSMenuItem(title: "\(Config.App.name) on GitHub", action: #selector(openGitHub), keyEquivalent: ""))
+    moreMenu.addItem(NSMenuItem(title: "Report an Issue", action: #selector(openIssues), keyEquivalent: ""))
+    moreItem.submenu = moreMenu
+    menu.addItem(moreItem)
+
     menu.addItem(.separator())
 
     let quitItem = NSMenuItem(title: "Quit (Touch ID)", action: #selector(quitApp), keyEquivalent: "q")
@@ -428,6 +437,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
   @objc private func openIssues() {
     NSWorkspace.shared.open(URL(string: "https://github.com/Erel3/lidguard/issues")!)
+  }
+
+  func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+    return false
   }
 
   func applicationWillTerminate(_ notification: Notification) {
