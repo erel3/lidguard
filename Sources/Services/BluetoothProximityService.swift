@@ -74,6 +74,17 @@ final class BluetoothProximityService: NSObject {
     }
   }
 
+  /// Returns (deviceName, rssi or nil if absent) for each trusted device. Thread-safe.
+  func getDeviceStatus(completion: @escaping ([(name: String, rssi: Int?)]) -> Void) {
+    queue.async { [self] in
+      let result = cachedTrustedDevices.map { device -> (name: String, rssi: Int?) in
+        let rssi = presentDevices.contains(device.id) ? lastSeenRSSI[device.id] : nil
+        return (name: device.name, rssi: rssi)
+      }
+      completion(result)
+    }
+  }
+
   func stop() {
     queue.async { [self] in
       guard isMonitoring else { return }

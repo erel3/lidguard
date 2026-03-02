@@ -332,13 +332,31 @@ final class TheftProtectionService {
       hardwareInfo += "🖥 <b>Lid:</b> \(lidState)\n"
       hardwareInfo += "🔌 <b>Charger:</b> \(chargerState)\n"
       hardwareInfo += "⚡️ <b>Triggers:</b> \(triggers.isEmpty ? "none" : triggers.joined(separator: ", "))\n"
-      hardwareInfo += "🛡 <b>Behaviors:</b> \(behaviors.isEmpty ? "none" : behaviors.joined(separator: ", "))\n\n"
+      hardwareInfo += "🛡 <b>Behaviors:</b> \(behaviors.isEmpty ? "none" : behaviors.joined(separator: ", "))\n"
 
-      self.notificationService.send(
-        message: "<b>STATUS: \(status)</b>\n\n\(hardwareInfo)\(info.formattedMessage)",
-        keyboard: keyboard,
-        completion: nil
-      )
+      let sendMessage = { (btInfo: String) in
+        self.notificationService.send(
+          message: "<b>STATUS: \(status)</b>\n\n\(hardwareInfo)\(btInfo)\n\(info.formattedMessage)",
+          keyboard: keyboard,
+          completion: nil
+        )
+      }
+
+      if settings.bluetoothAutoArmEnabled && settings.hasTrustedBLEDevices {
+        self.bluetoothProximityService.getDeviceStatus { devices in
+          var bt = "📶 <b>Bluetooth:</b> auto-arm on\n"
+          for d in devices {
+            if let rssi = d.rssi {
+              bt += "  • \(d.name): nearby (\(rssi) dBm)\n"
+            } else {
+              bt += "  • \(d.name): not seen\n"
+            }
+          }
+          sendMessage(bt)
+        }
+      } else {
+        sendMessage("📶 <b>Bluetooth:</b> auto-arm off\n")
+      }
     }
   }
 
