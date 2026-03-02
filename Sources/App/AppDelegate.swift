@@ -261,9 +261,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     if let ctx = NSGraphicsContext.current?.cgContext {
       let color: CGColor
       switch style {
-      case .eyeOpen:
+      case .eyeOpen, .eyeOpenBluetooth:
         color = CGColor(red: 0.2, green: 0.78, blue: 0.35, alpha: 1.0)
-      case .eyeOpenBluetooth, .eyeHalfClosedBluetooth:
+      case .eyeHalfClosedBluetooth:
         color = CGColor(red: 0.95, green: 0.75, blue: 0.1, alpha: 1.0)
       case .eyeAlert:
         color = CGColor(red: 0.9, green: 0.2, blue: 0.15, alpha: 1.0)
@@ -345,7 +345,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                              eyeCY: CGFloat, eyeW: CGFloat, eyeH: CGFloat,
                              leftX: CGFloat, rightX: CGFloat, cx: CGFloat) {
     switch style {
-    case .eyeOpen, .eyeOpenBluetooth, .eyeAlert:
+    case .eyeOpen, .eyeAlert:
       let path = CGMutablePath()
       path.move(to: CGPoint(x: leftX, y: eyeCY))
       path.addCurve(to: CGPoint(x: rightX, y: eyeCY),
@@ -363,7 +363,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
       ctx.fillEllipse(in: CGRect(x: cx - irisR, y: eyeCY - irisR,
                                   width: irisR * 2, height: irisR * 2))
 
-    case .eyeHalfClosedBluetooth:
+    case .eyeOpenBluetooth, .eyeHalfClosedBluetooth:
       // Bottom curve (full open eye bottom)
       let halfPath = CGMutablePath()
       halfPath.move(to: CGPoint(x: leftX, y: eyeCY))
