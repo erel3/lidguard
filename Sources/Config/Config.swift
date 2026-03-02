@@ -45,6 +45,8 @@ enum Config {
     static let defaultRssiThreshold: Int = -70
     static let defaultArmGracePeriod: TimeInterval = 120
     static let defaultDisarmGracePeriod: TimeInterval = 5
+    static let rssiHysteresis: Int = 5
+    static let btRecoveryCooldown: TimeInterval = 15
   }
 
   enum App {

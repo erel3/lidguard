@@ -34,6 +34,8 @@ final class BluetoothProximityService: NSObject {
 
   private var presentDevices: Set<UUID> = []
   private var lastSeenRSSI: [UUID: Int] = [:]
+  private var nearDevices: Set<UUID> = []
+  private var btRecoveryUntil: Date?
   private var cachedTrustedDevices: [TrustedBLEDevice] = []
   private var cachedTrustedIDs: Set<UUID> = []
 
@@ -94,6 +96,8 @@ final class BluetoothProximityService: NSObject {
       cancelDisarmGrace()
       presentDevices.removeAll()
       lastSeenRSSI.removeAll()
+      nearDevices.removeAll()
+      btRecoveryUntil = nil
       if !isDiscoveryMode {
         centralManager = nil
       }
@@ -112,6 +116,8 @@ final class BluetoothProximityService: NSObject {
         cancelDisarmGrace()
         presentDevices.removeAll()
         lastSeenRSSI.removeAll()
+        nearDevices.removeAll()
+        btRecoveryUntil = nil
       }
       // Inline start
       let devices = SettingsService.shared.trustedBLEDevices
@@ -221,13 +227,33 @@ final class BluetoothProximityService: NSObject {
     let trusted = cachedTrustedDevices
     guard !trusted.isEmpty else { return }
 
-    let presentTrusted = trusted.filter { device in
-      guard presentDevices.contains(device.id) else { return false }
-      guard let rssi = lastSeenRSSI[device.id] else { return false }
-      return rssi >= device.rssiThreshold
+    // BT recovery cooldown — skip evaluation after Bluetooth powers back on
+    if let recoveryUntil = btRecoveryUntil {
+      if Date() < recoveryUntil {
+        Logger.bluetooth.debug("Skipping presence evaluation — BT recovery cooldown active")
+        return
+      }
+      Logger.bluetooth.debug("BT recovery cooldown expired, resuming evaluation")
+      btRecoveryUntil = nil
     }
 
-    if presentTrusted.isEmpty {
+    var currentNear = Set<UUID>()
+    for device in trusted {
+      guard presentDevices.contains(device.id),
+            let rssi = lastSeenRSSI[device.id] else { continue }
+
+      let wasNear = nearDevices.contains(device.id)
+      let threshold = wasNear
+        ? device.rssiThreshold - Config.Bluetooth.rssiHysteresis
+        : device.rssiThreshold + Config.Bluetooth.rssiHysteresis
+
+      if rssi >= threshold {
+        currentNear.insert(device.id)
+      }
+    }
+    nearDevices = currentNear
+
+    if currentNear.isEmpty {
       if armGraceTimer == nil {
         Logger.bluetooth.info("All trusted devices lost, starting arm grace period")
         ActivityLog.logAsync(.bluetooth, "All trusted devices out of range, grace period started")
@@ -237,7 +263,7 @@ final class BluetoothProximityService: NSObject {
     } else {
       cancelArmGrace()
       if disarmGraceTimer == nil {
-        let device = presentTrusted[0]
+        guard let device = trusted.first(where: { currentNear.contains($0.id) }) else { return }
         Logger.bluetooth.info("Trusted device returned: \(device.name)")
         ActivityLog.logAsync(.bluetooth, "Device returned: \(device.name)")
         startDisarmGrace(device: device)
@@ -305,6 +331,8 @@ extension BluetoothProximityService: CBCentralManagerDelegate {
     case .poweredOn:
       Logger.bluetooth.info("Bluetooth powered on")
       if isMonitoring {
+        cancelArmGrace()
+        btRecoveryUntil = Date().addingTimeInterval(Config.Bluetooth.btRecoveryCooldown)
         startScanCycle()
       }
       if isDiscoveryMode {
@@ -316,6 +344,7 @@ extension BluetoothProximityService: CBCentralManagerDelegate {
     case .poweredOff:
       Logger.bluetooth.warning("Bluetooth powered off — treating as all devices lost")
       ActivityLog.logAsync(.bluetooth, "Bluetooth off — all devices considered gone")
+      btRecoveryUntil = nil
       stopScanCycle()
       cancelDisarmGrace()
       // Bluetooth off = can't see any devices = all lost → start arm grace
