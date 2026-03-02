@@ -27,23 +27,19 @@ final class PmsetService {
     return runAppleScript(script)
   }
 
-  @discardableResult
-  func enable() -> Bool {
-    queue.sync {
-      guard isInstalled() else { return false }
+  func enable() {
+    queue.async { [self] in
+      guard isInstalled() else { return }
       let success = runProcess("/usr/bin/sudo", arguments: ["pmset", "-a", "disablesleep", "1"])
       print("[PmsetService] Enable disablesleep: \(success ? "OK" : "FAILED")")
-      return success
     }
   }
 
-  @discardableResult
-  func disable() -> Bool {
-    queue.sync {
-      guard isInstalled() else { return false }
+  func disable() {
+    queue.async { [self] in
+      guard isInstalled() else { return }
       let success = runProcess("/usr/bin/sudo", arguments: ["pmset", "-a", "disablesleep", "0"])
       print("[PmsetService] Disable disablesleep: \(success ? "OK" : "FAILED")")
-      return success
     }
   }
 
