@@ -1,6 +1,10 @@
 import Contacts
 import Foundation
 
+extension Notification.Name {
+  static let bluetoothSettingsChanged = Notification.Name("com.lidguard.bluetoothSettingsChanged")
+}
+
 final class SettingsService {
   static let shared = SettingsService()
   private let defaults = UserDefaults.standard
@@ -35,6 +39,17 @@ final class SettingsService {
     static let autoUpdateEnabled = "lidguard.autoUpdateEnabled"
     static let lastUpdateCheckDate = "lidguard.lastUpdateCheckDate"
     static let skippedVersion = "lidguard.skippedVersion"
+
+    // Bluetooth Shortcut
+    static let btShortcutKeyCode = "lidguard.btShortcutKeyCode"
+    static let btShortcutModifiers = "lidguard.btShortcutModifiers"
+    static let btShortcutEnabled = "lidguard.btShortcutEnabled"
+
+    // Bluetooth
+    static let bluetoothAutoArmEnabled = "lidguard.bluetoothAutoArmEnabled"
+    static let trustedBLEDevices = "lidguard.trustedBLEDevices"
+    static let bluetoothArmGracePeriod = "lidguard.bluetoothArmGracePeriod"
+    static let bluetoothDisarmGracePeriod = "lidguard.bluetoothDisarmGracePeriod"
   }
 
   private enum KeychainKeys {
@@ -225,6 +240,63 @@ final class SettingsService {
     set { defaults.set(newValue, forKey: Keys.skippedVersion) }
   }
 
+  // MARK: - Bluetooth Shortcut
+
+  var btShortcutKeyCode: Int {
+    get { defaults.object(forKey: Keys.btShortcutKeyCode) as? Int ?? -1 }
+    set { defaults.set(newValue, forKey: Keys.btShortcutKeyCode) }
+  }
+
+  var btShortcutModifiers: UInt {
+    get { defaults.object(forKey: Keys.btShortcutModifiers) as? UInt ?? 0 }
+    set { defaults.set(newValue, forKey: Keys.btShortcutModifiers) }
+  }
+
+  var btShortcutEnabled: Bool {
+    get { defaults.object(forKey: Keys.btShortcutEnabled) as? Bool ?? false }
+    set { defaults.set(newValue, forKey: Keys.btShortcutEnabled) }
+  }
+
+  var isBtShortcutConfigured: Bool {
+    btShortcutKeyCode >= 0 && btShortcutModifiers != 0
+  }
+
+  // MARK: - Bluetooth
+
+  var bluetoothAutoArmEnabled: Bool {
+    get { defaults.object(forKey: Keys.bluetoothAutoArmEnabled) as? Bool ?? false }
+    set { defaults.set(newValue, forKey: Keys.bluetoothAutoArmEnabled) }
+  }
+
+  var trustedBLEDevices: [TrustedBLEDevice] {
+    get {
+      guard let data = defaults.data(forKey: Keys.trustedBLEDevices),
+            let devices = try? JSONDecoder().decode([TrustedBLEDevice].self, from: data) else {
+        return []
+      }
+      return devices
+    }
+    set {
+      if let data = try? JSONEncoder().encode(newValue) {
+        defaults.set(data, forKey: Keys.trustedBLEDevices)
+      }
+    }
+  }
+
+  var bluetoothArmGracePeriod: TimeInterval {
+    get { defaults.object(forKey: Keys.bluetoothArmGracePeriod) as? TimeInterval ?? Config.Bluetooth.defaultArmGracePeriod }
+    set { defaults.set(newValue, forKey: Keys.bluetoothArmGracePeriod) }
+  }
+
+  var bluetoothDisarmGracePeriod: TimeInterval {
+    get { defaults.object(forKey: Keys.bluetoothDisarmGracePeriod) as? TimeInterval ?? Config.Bluetooth.defaultDisarmGracePeriod }
+    set { defaults.set(newValue, forKey: Keys.bluetoothDisarmGracePeriod) }
+  }
+
+  var hasTrustedBLEDevices: Bool {
+    !trustedBLEDevices.isEmpty
+  }
+
   // MARK: - Configuration Status
 
   func isConfigured() -> Bool {
@@ -255,6 +327,13 @@ final class SettingsService {
     defaults.removeObject(forKey: Keys.autoUpdateEnabled)
     defaults.removeObject(forKey: Keys.lastUpdateCheckDate)
     defaults.removeObject(forKey: Keys.skippedVersion)
+    defaults.removeObject(forKey: Keys.btShortcutKeyCode)
+    defaults.removeObject(forKey: Keys.btShortcutModifiers)
+    defaults.removeObject(forKey: Keys.btShortcutEnabled)
+    defaults.removeObject(forKey: Keys.bluetoothAutoArmEnabled)
+    defaults.removeObject(forKey: Keys.trustedBLEDevices)
+    defaults.removeObject(forKey: Keys.bluetoothArmGracePeriod)
+    defaults.removeObject(forKey: Keys.bluetoothDisarmGracePeriod)
 
     // Clear Keychain
     KeychainService.deleteAll()

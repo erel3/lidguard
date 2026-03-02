@@ -7,6 +7,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
   private var toggleMenuItem: NSMenuItem!
   private var testMenuItem: NSMenuItem!
   private var activityLogMenuItem: NSMenuItem!
+  private var bluetoothAutoArmMenuItem: NSMenuItem!
+  private var eyeOverlayView: NSImageView?
 
   private let theftProtection = TheftProtectionService()
   private let authService = BiometricAuthService()
@@ -50,7 +52,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     // In theft mode, always block termination
     // In enabled state, check shutdownBlocking setting
-    if theftProtection.state == .enabled && !SettingsService.shared.behaviorShutdownBlocking {
+    if (theftProtection.state == .enabled || theftProtection.state == .enabledBluetooth)
+       && !SettingsService.shared.behaviorShutdownBlocking {
       return .terminateNow
     }
 
@@ -131,6 +134,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     activityLogMenuItem.isHidden = true
     menu.addItem(activityLogMenuItem)
 
+    bluetoothAutoArmMenuItem = NSMenuItem(title: "Bluetooth Auto-Arm: Off", action: #selector(toggleBluetoothAutoArm), keyEquivalent: "b")
+    bluetoothAutoArmMenuItem.target = self
+    bluetoothAutoArmMenuItem.image = menuSymbol("antenna.radiowaves.left.and.right", color: .secondaryLabelColor)
+    menu.addItem(bluetoothAutoArmMenuItem)
+
     menu.addItem(.separator())
 
     let settingsItem = NSMenuItem(title: "Settings... (Touch ID)", action: #selector(openSettings), keyEquivalent: ",")
@@ -178,7 +186,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     case .disabled:
       theftProtection.enableProtection()
 
-    case .enabled:
+    case .enabled, .enabledBluetooth:
       authService.authenticate(reason: "Authenticate to disable protection") { [weak self] success in
         if success {
           self?.theftProtection.disableProtection()
@@ -215,43 +223,88 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     let image = NSImage(size: NSSize(width: size, height: size))
     image.lockFocus()
     if let ctx = NSGraphicsContext.current?.cgContext {
-      drawMenuBarIcon(ctx: ctx, size: size, style: style)
+      ctx.setStrokeColor(.black)
+      ctx.setFillColor(.black)
+      ctx.setLineWidth(size * 0.065)
+      ctx.setLineCap(.round)
+      ctx.setLineJoin(.round)
+      drawLaptopBody(ctx: ctx, s: size, cx: size * 0.5)
+      // For eyeClosed, draw the eye in template too (same black, macOS colors it)
+      if style == .eyeClosed {
+        let screenH = size * 0.42
+        let screenY = size * 0.38
+        let eyeCY = screenY + screenH * 0.5
+        let eyeW = size * 0.36
+        let eyeH = size * 0.14
+        let cx = size * 0.5
+        drawEyeShape(ctx: ctx, s: size, style: style, eyeCY: eyeCY, eyeW: eyeW, eyeH: eyeH,
+                     leftX: cx - eyeW / 2, rightX: cx + eyeW / 2, cx: cx)
+      }
     }
     image.unlockFocus()
-    // Colored icons (green for enabled, red for alert) — not templates
-    image.isTemplate = (style == .eyeClosed)
+    image.isTemplate = true
     return image
   }
 
   private enum MenuBarIconStyle {
-    case eyeOpen       // enabled / monitoring
-    case eyeClosed     // disabled
-    case eyeAlert      // theft mode — eye + exclamation
+    case eyeOpen                 // enabled / monitoring
+    case eyeOpenBluetooth        // auto-armed via bluetooth (yellow)
+    case eyeHalfClosedBluetooth  // disabled but BT monitoring active (yellow half-closed)
+    case eyeClosed               // disabled
+    case eyeAlert                // theft mode — eye + exclamation
   }
 
-  private func drawMenuBarIcon(ctx: CGContext, size: CGFloat, style: MenuBarIconStyle) {
-    let s = size
-    let cx = s * 0.5
-    let lw = s * 0.065
-
-    switch style {
-    case .eyeAlert:
-      let red = CGColor(red: 0.9, green: 0.2, blue: 0.15, alpha: 1.0)
-      ctx.setStrokeColor(red)
-      ctx.setFillColor(red)
-    case .eyeOpen:
-      let green = CGColor(red: 0.2, green: 0.78, blue: 0.35, alpha: 1.0)
-      ctx.setStrokeColor(green)
-      ctx.setFillColor(green)
-    case .eyeClosed:
-      ctx.setStrokeColor(.black)
-      ctx.setFillColor(.black)
+  private func menuBarEyeImage(_ style: MenuBarIconStyle) -> NSImage {
+    let size: CGFloat = 18
+    let image = NSImage(size: NSSize(width: size, height: size))
+    image.lockFocus()
+    if let ctx = NSGraphicsContext.current?.cgContext {
+      let color: CGColor
+      switch style {
+      case .eyeOpen:
+        color = CGColor(red: 0.2, green: 0.78, blue: 0.35, alpha: 1.0)
+      case .eyeOpenBluetooth, .eyeHalfClosedBluetooth:
+        color = CGColor(red: 0.95, green: 0.75, blue: 0.1, alpha: 1.0)
+      case .eyeAlert:
+        color = CGColor(red: 0.9, green: 0.2, blue: 0.15, alpha: 1.0)
+      case .eyeClosed:
+        color = .black
+      }
+      ctx.setStrokeColor(color)
+      ctx.setFillColor(color)
+      ctx.setLineWidth(size * 0.065)
+      ctx.setLineCap(.round)
+      ctx.setLineJoin(.round)
+      let screenH = size * 0.42
+      let screenY = size * 0.38
+      let eyeCY = screenY + screenH * 0.5
+      let eyeW = size * 0.36
+      let eyeH = size * 0.14
+      let cx = size * 0.5
+      drawEyeShape(ctx: ctx, s: size, style: style, eyeCY: eyeCY, eyeW: eyeW, eyeH: eyeH,
+                   leftX: cx - eyeW / 2, rightX: cx + eyeW / 2, cx: cx)
     }
-    ctx.setLineWidth(lw)
-    ctx.setLineCap(.round)
-    ctx.setLineJoin(.round)
+    image.unlockFocus()
+    image.isTemplate = false
+    return image
+  }
 
-    // --- Screen lid (landscape rect) ---
+  private func showEyeOverlay(style: MenuBarIconStyle) {
+    guard let button = statusItem.button else { return }
+    removeEyeOverlay()
+    let imageView = NSImageView(image: menuBarEyeImage(style))
+    imageView.frame = button.bounds
+    imageView.imageScaling = .scaleNone
+    button.addSubview(imageView)
+    eyeOverlayView = imageView
+  }
+
+  private func removeEyeOverlay() {
+    eyeOverlayView?.removeFromSuperview()
+    eyeOverlayView = nil
+  }
+
+  private func drawLaptopBody(ctx: CGContext, s: CGFloat, cx: CGFloat) {
     let screenW = s * 0.72
     let screenH = s * 0.42
     let screenY = s * 0.38
@@ -263,12 +316,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     ctx.addPath(screenPath)
     ctx.strokePath()
 
-    // --- Hinge ---
     let hingeW = screenW * 0.5
     let hingeH = s * 0.035
     ctx.fill([CGRect(x: cx - hingeW / 2, y: screenY - hingeH, width: hingeW, height: hingeH)])
 
-    // --- Base (trapezoid) ---
     let baseTopW = screenW + s * 0.06
     let baseBotW = screenW + s * 0.18
     let baseH = s * 0.09
@@ -288,16 +339,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     base.closeSubpath()
     ctx.addPath(base)
     ctx.fillPath()
+  }
 
-    // --- Eye inside screen ---
-    let eyeCY = screenY + screenH * 0.5
-    let eyeW = s * 0.36
-    let eyeH = s * 0.14
-    let leftX = cx - eyeW / 2
-    let rightX = cx + eyeW / 2
-
+  private func drawEyeShape(ctx: CGContext, s: CGFloat, style: MenuBarIconStyle,
+                             eyeCY: CGFloat, eyeW: CGFloat, eyeH: CGFloat,
+                             leftX: CGFloat, rightX: CGFloat, cx: CGFloat) {
     switch style {
-    case .eyeOpen, .eyeAlert:
+    case .eyeOpen, .eyeOpenBluetooth, .eyeAlert:
       let path = CGMutablePath()
       path.move(to: CGPoint(x: leftX, y: eyeCY))
       path.addCurve(to: CGPoint(x: rightX, y: eyeCY),
@@ -313,6 +361,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
       let irisR = s * 0.08
       ctx.fillEllipse(in: CGRect(x: cx - irisR, y: eyeCY - irisR,
+                                  width: irisR * 2, height: irisR * 2))
+
+    case .eyeHalfClosedBluetooth:
+      // Bottom curve (full open eye bottom)
+      let halfPath = CGMutablePath()
+      halfPath.move(to: CGPoint(x: leftX, y: eyeCY))
+      halfPath.addCurve(to: CGPoint(x: rightX, y: eyeCY),
+                        control1: CGPoint(x: leftX + eyeW * 0.25, y: eyeCY - eyeH),
+                        control2: CGPoint(x: rightX - eyeW * 0.25, y: eyeCY - eyeH))
+      // Top curve (drooping — half the normal height)
+      let halfH = eyeH * 0.4
+      halfPath.addCurve(to: CGPoint(x: leftX, y: eyeCY),
+                        control1: CGPoint(x: rightX - eyeW * 0.25, y: eyeCY + halfH),
+                        control2: CGPoint(x: leftX + eyeW * 0.25, y: eyeCY + halfH))
+      halfPath.closeSubpath()
+
+      ctx.addPath(halfPath)
+      ctx.strokePath()
+
+      // Small iris peeking below the lid
+      let irisR = s * 0.05
+      ctx.fillEllipse(in: CGRect(x: cx - irisR, y: eyeCY - irisR * 1.5,
                                   width: irisR * 2, height: irisR * 2))
 
     case .eyeClosed:
@@ -345,11 +415,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
   private func updateStatus() {
     switch theftProtection.state {
     case .disabled:
-      statusMenuItem.title = "Status: Disabled"
-      statusMenuItem.image = menuSymbol("circle.fill", color: .systemRed)
+      let btWatching = SettingsService.shared.bluetoothAutoArmEnabled && SettingsService.shared.hasTrustedBLEDevices
+      statusMenuItem.title = btWatching ? "Status: Watching Bluetooth" : "Status: Disabled"
+      statusMenuItem.image = menuSymbol("circle.fill", color: btWatching ? .systemYellow : .systemRed)
       toggleMenuItem.title = "Enable Protection"
       toggleMenuItem.image = menuSymbol("checkmark.shield", color: .systemGreen)
-      statusItem.button?.image = menuBarIcon(.eyeClosed)
+      statusItem.button?.image = menuBarIcon(btWatching ? .eyeHalfClosedBluetooth : .eyeClosed)
+      if btWatching { showEyeOverlay(style: .eyeHalfClosedBluetooth) } else { removeEyeOverlay() }
 
     case .enabled:
       statusMenuItem.title = "Status: Monitoring"
@@ -357,6 +429,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
       toggleMenuItem.title = "Disable Protection"
       toggleMenuItem.image = menuSymbol("xmark.shield", color: .systemRed)
       statusItem.button?.image = menuBarIcon(.eyeOpen)
+      showEyeOverlay(style: .eyeOpen)
+
+    case .enabledBluetooth:
+      statusMenuItem.title = "Status: Auto-Armed (Bluetooth)"
+      statusMenuItem.image = menuSymbol("antenna.radiowaves.left.and.right", color: .systemYellow)
+      toggleMenuItem.title = "Disable Protection"
+      toggleMenuItem.image = menuSymbol("xmark.shield", color: .systemRed)
+      statusItem.button?.image = menuBarIcon(.eyeOpenBluetooth)
+      showEyeOverlay(style: .eyeOpenBluetooth)
 
     case .theftMode:
       statusMenuItem.title = "THEFT MODE ACTIVE"
@@ -364,7 +445,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
       toggleMenuItem.title = "Deactivate Theft Mode"
       toggleMenuItem.image = menuSymbol("lock.open", color: .systemOrange)
       statusItem.button?.image = menuBarIcon(.eyeAlert)
+      showEyeOverlay(style: .eyeAlert)
     }
+
+    updateBluetoothMenuItem()
+  }
+
+  private func updateBluetoothMenuItem() {
+    let settings = SettingsService.shared
+    let hasTrusted = settings.hasTrustedBLEDevices
+    let enabled = hasTrusted && settings.bluetoothAutoArmEnabled
+
+    bluetoothAutoArmMenuItem.title = "Bluetooth Auto-Arm: \(enabled ? "On" : "Off")"
+    bluetoothAutoArmMenuItem.isEnabled = hasTrusted
+    bluetoothAutoArmMenuItem.image = menuSymbol(
+      "antenna.radiowaves.left.and.right",
+      color: enabled ? .systemYellow : .secondaryLabelColor
+    )
   }
 
   @objc private func toggleProtection() {
@@ -372,7 +469,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     case .disabled:
       theftProtection.enableProtection(lockScreen: true)
 
-    case .enabled:
+    case .enabled, .enabledBluetooth:
       authService.authenticate(reason: "Authenticate to disable protection") { [weak self] success in
         if success {
           self?.theftProtection.disableProtection()
@@ -385,6 +482,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
           self?.theftProtection.deactivateTheftMode()
         }
       }
+    }
+  }
+
+  @objc private func toggleBluetoothAutoArm() {
+    let settings = SettingsService.shared
+    let turningOff = settings.bluetoothAutoArmEnabled
+
+    let perform = { [weak self] in
+      settings.bluetoothAutoArmEnabled = !settings.bluetoothAutoArmEnabled
+      NotificationCenter.default.post(name: .bluetoothSettingsChanged, object: nil)
+      if turningOff && self?.theftProtection.state == .enabledBluetooth {
+        self?.theftProtection.disableProtection()
+      }
+      self?.updateStatus()
+      ActivityLog.logAsync(.bluetooth, "Bluetooth auto-arm \(settings.bluetoothAutoArmEnabled ? "enabled" : "disabled")")
+    }
+
+    if turningOff {
+      authService.authenticate(reason: "Authenticate to disable Bluetooth auto-arm") { success in
+        guard success else { return }
+        perform()
+      }
+    } else {
+      perform()
     }
   }
 
@@ -455,13 +576,38 @@ extension AppDelegate: TheftProtectionDelegate {
     switch service.state {
     case .disabled:
       service.enableProtection(lockScreen: true)
-    case .enabled:
+    case .enabled, .enabledBluetooth:
       authService.authenticate(reason: "Authenticate to disable protection") { [weak self] success in
         guard success else { return }
         self?.theftProtection.disableProtection()
       }
     case .theftMode:
       break
+    }
+  }
+
+  func theftProtectionBluetoothShortcutTriggered(_ service: TheftProtectionService) {
+    let settings = SettingsService.shared
+    guard settings.hasTrustedBLEDevices else { return }
+
+    if settings.bluetoothAutoArmEnabled {
+      // Turning off — require Touch ID
+      authService.authenticate(reason: "Authenticate to disable Bluetooth auto-arm") { [weak self] success in
+        guard success else { return }
+        settings.bluetoothAutoArmEnabled = false
+        NotificationCenter.default.post(name: .bluetoothSettingsChanged, object: nil)
+        if self?.theftProtection.state == .enabledBluetooth {
+          self?.theftProtection.disableProtection()
+        }
+        self?.updateStatus()
+        ActivityLog.logAsync(.bluetooth, "Bluetooth auto-arm disabled via shortcut")
+      }
+    } else {
+      // Turning on — no auth needed
+      settings.bluetoothAutoArmEnabled = true
+      NotificationCenter.default.post(name: .bluetoothSettingsChanged, object: nil)
+      updateStatus()
+      ActivityLog.logAsync(.bluetooth, "Bluetooth auto-arm enabled via shortcut")
     }
   }
 
@@ -472,6 +618,7 @@ extension AppDelegate: TheftProtectionDelegate {
         self?.menu.cancelTracking()
       }
       self?.updateStatus()
+      self?.updateBluetoothMenuItem()
 
       // Show Dock icon when protection enabled (required to block shutdown)
       // Hide Dock icon when disabled (cleaner UX)

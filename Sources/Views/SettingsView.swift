@@ -2,7 +2,7 @@ import Contacts
 import SwiftUI
 
 enum SettingsSection: String, CaseIterable, Identifiable {
-  case general, triggers, protection, notifications
+  case general, triggers, protection, bluetooth, notifications
 
   var id: String { rawValue }
 
@@ -11,6 +11,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
     case .general: return "General"
     case .triggers: return "Triggers"
     case .protection: return "Protection"
+    case .bluetooth: return "Bluetooth"
     case .notifications: return "Notifications"
     }
   }
@@ -20,6 +21,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
     case .general: return "gear"
     case .triggers: return "bolt.fill"
     case .protection: return "shield.fill"
+    case .bluetooth: return "antenna.radiowaves.left.and.right"
     case .notifications: return "bell.fill"
     }
   }
@@ -52,6 +54,15 @@ struct SettingsView: View {
   @State private var behaviorAutoAlarm: Bool = false
   @State private var alarmVolume: Double = 100
   @State private var selectedAlarmSound: String = "Sosumi"
+
+  // Bluetooth
+  @State private var bluetoothAutoArmEnabled: Bool = false
+  @State private var bluetoothArmGracePeriod: Double = 30
+  @State private var bluetoothDisarmGracePeriod: Double = 5
+  @State private var trustedBLEDevices: [TrustedBLEDevice] = []
+  @State private var btShortcutEnabled: Bool = false
+  @State private var btShortcutKeyCode: Int = -1
+  @State private var btShortcutModifiers: UInt = 0
 
   // Notifications
   @State private var telegramBotToken: String = ""
@@ -94,6 +105,8 @@ struct SettingsView: View {
         triggersTab
       case .protection:
         protectionTab
+      case .bluetooth:
+        bluetoothTab
       case .notifications:
         notificationsTab
       case nil:
@@ -332,6 +345,77 @@ struct SettingsView: View {
     .formStyle(.grouped)
   }
 
+  // MARK: - Bluetooth Tab
+
+  private var bluetoothTab: some View {
+    Form {
+      Section {
+        Toggle("Enable Bluetooth auto-arm", isOn: $bluetoothAutoArmEnabled)
+      } header: {
+        Text("Auto-Arm")
+      } footer: {
+        Text("Automatically arms protection when all trusted Bluetooth devices leave range, and disarms when any returns.")
+          .font(.footnote)
+          .foregroundStyle(.secondary)
+      }
+
+      Section {
+        Toggle("Enable global shortcut", isOn: $btShortcutEnabled)
+        if btShortcutEnabled {
+          LabeledContent("Shortcut") {
+            HStack(spacing: 8) {
+              ShortcutRecorderView(keyCode: $btShortcutKeyCode, modifiers: $btShortcutModifiers)
+                .frame(width: 160, height: 24)
+              if btShortcutKeyCode >= 0 && btShortcutModifiers != 0 {
+                Button("Clear") {
+                  btShortcutKeyCode = -1
+                  btShortcutModifiers = 0
+                }
+                .buttonStyle(.borderless)
+              }
+            }
+          }
+        }
+      } header: {
+        Text("Global Keyboard Shortcut")
+      } footer: {
+        Text("Press the shortcut anywhere to toggle Bluetooth auto-arm. Requires Accessibility permission.")
+          .font(.footnote)
+          .foregroundStyle(.secondary)
+      }
+
+      if bluetoothAutoArmEnabled {
+        Section {
+          LabeledContent("Arm delay") {
+            HStack {
+              Slider(value: $bluetoothArmGracePeriod, in: 5...120, step: 5)
+              Text("\(Int(bluetoothArmGracePeriod))s")
+                .monospacedDigit()
+                .frame(width: 40, alignment: .trailing)
+            }
+          }
+          LabeledContent("Disarm delay") {
+            HStack {
+              Slider(value: $bluetoothDisarmGracePeriod, in: 0...30, step: 1)
+              Text("\(Int(bluetoothDisarmGracePeriod))s")
+                .monospacedDigit()
+                .frame(width: 40, alignment: .trailing)
+            }
+          }
+        } header: {
+          Text("Grace Periods")
+        }
+
+        Section {
+          BluetoothDevicePickerView(trustedDevices: $trustedBLEDevices)
+        } header: {
+          Text("Devices")
+        }
+      }
+    }
+    .formStyle(.grouped)
+  }
+
   // MARK: - Notifications Tab
 
   private var notificationsTab: some View {
@@ -394,6 +478,13 @@ struct SettingsView: View {
     behaviorShutdownBlocking = settings.behaviorShutdownBlocking
     behaviorLockScreen = settings.behaviorLockScreen
     behaviorAlarm = settings.behaviorAlarm
+    bluetoothAutoArmEnabled = settings.bluetoothAutoArmEnabled
+    bluetoothArmGracePeriod = settings.bluetoothArmGracePeriod
+    bluetoothDisarmGracePeriod = settings.bluetoothDisarmGracePeriod
+    trustedBLEDevices = settings.trustedBLEDevices
+    btShortcutEnabled = settings.btShortcutEnabled
+    btShortcutKeyCode = settings.btShortcutKeyCode
+    btShortcutModifiers = UInt(settings.btShortcutModifiers)
   }
 
   private func saveSettings() {
@@ -419,6 +510,15 @@ struct SettingsView: View {
     settings.behaviorShutdownBlocking = behaviorShutdownBlocking
     settings.behaviorLockScreen = behaviorLockScreen
     settings.behaviorAlarm = behaviorAlarm
+
+    settings.bluetoothAutoArmEnabled = bluetoothAutoArmEnabled
+    settings.bluetoothArmGracePeriod = bluetoothArmGracePeriod
+    settings.bluetoothDisarmGracePeriod = bluetoothDisarmGracePeriod
+    settings.trustedBLEDevices = trustedBLEDevices
+    settings.btShortcutEnabled = btShortcutEnabled
+    settings.btShortcutKeyCode = btShortcutKeyCode
+    settings.btShortcutModifiers = UInt(btShortcutModifiers)
+    NotificationCenter.default.post(name: .bluetoothSettingsChanged, object: nil)
 
     settings.autoUpdateEnabled = autoUpdateEnabled
     if autoUpdateEnabled {

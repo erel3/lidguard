@@ -11,6 +11,7 @@ enum LogCategory: String, CaseIterable, Codable {
   case pushover
   case power
   case location
+  case bluetooth
 
   var icon: String {
     switch self {
@@ -23,6 +24,7 @@ enum LogCategory: String, CaseIterable, Codable {
     case .pushover: return "🔔"
     case .power: return "🔋"
     case .location: return "📍"
+    case .bluetooth: return "📶"
     }
   }
 
@@ -37,6 +39,7 @@ enum LogCategory: String, CaseIterable, Codable {
     case .pushover: return "Pushover"
     case .power: return "Power"
     case .location: return "Location"
+    case .bluetooth: return "Bluetooth"
     }
   }
 }

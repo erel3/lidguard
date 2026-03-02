@@ -134,6 +134,7 @@ struct LogEntryRow: View {
     case .pushover: return .purple
     case .power: return .yellow
     case .location: return .cyan
+    case .bluetooth: return .teal
     }
   }
 

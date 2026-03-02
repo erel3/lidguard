@@ -5,6 +5,7 @@ import os.log
 enum ProtectionState {
   case disabled
   case enabled
+  case enabledBluetooth
   case theftMode
 }
 
@@ -23,6 +24,7 @@ enum TheftTrigger {
 protocol TheftProtectionDelegate: AnyObject {
   func theftProtectionStateDidChange(_ service: TheftProtectionService, state: ProtectionState)
   func theftProtectionShortcutTriggered(_ service: TheftProtectionService)
+  func theftProtectionBluetoothShortcutTriggered(_ service: TheftProtectionService)
 }
 
 final class TheftProtectionService {
@@ -38,12 +40,15 @@ final class TheftProtectionService {
   private let powerMonitor: PowerMonitorService
   private let powerButtonMonitor = PowerButtonMonitor()
   private let globalShortcutService = GlobalShortcutService()
+  private let bluetoothProximityService = BluetoothProximityService()
   private let pmsetService = PmsetService.shared
 
+  private var lastManualDisarmTime: Date?
   private var trackingTimer: DispatchSourceTimer?
   private let trackingQueue = DispatchQueue(label: "com.lidguard.tracking", qos: .userInitiated)
   private var updateCount = 0
   private var currentTrigger: TheftTrigger?
+  private var stateBeforeTheft: ProtectionState?
 
   private(set) var state: ProtectionState = .disabled
 
@@ -70,10 +75,18 @@ final class TheftProtectionService {
     self.powerMonitor.delegate = self
     self.powerButtonMonitor.delegate = self
     self.globalShortcutService.delegate = self
+    self.bluetoothProximityService.delegate = self
 
     NotificationCenter.default.addObserver(
       forName: .shortcutSettingsChanged, object: nil, queue: .main
     ) { [weak self] _ in
+      self?.globalShortcutService.restart()
+    }
+
+    NotificationCenter.default.addObserver(
+      forName: .bluetoothSettingsChanged, object: nil, queue: .main
+    ) { [weak self] _ in
+      self?.bluetoothProximityService.restart()
       self?.globalShortcutService.restart()
     }
   }
@@ -83,6 +96,9 @@ final class TheftProtectionService {
     commandService.start()
     sleepWakeService.start()
     globalShortcutService.start()
+    if SettingsService.shared.bluetoothAutoArmEnabled {
+      bluetoothProximityService.start()
+    }
     Logger.theft.info("Started (protection disabled)")
   }
 
@@ -90,6 +106,7 @@ final class TheftProtectionService {
     powerMonitor.stop()
     pmsetService.disable()
     globalShortcutService.stop()
+    bluetoothProximityService.stop()
   }
 
   func enableProtection(notify: Bool = true, lockScreen: Bool = false) {
@@ -143,10 +160,45 @@ final class TheftProtectionService {
     delegate?.theftProtectionStateDidChange(self, state: .enabled)
   }
 
-  func disableProtection(remote: Bool = false) {
-    guard state == .enabled else { return }
+  func enableProtectionBluetooth() {
+    guard state == .disabled else { return }
 
+    let settings = SettingsService.shared
+    state = .enabledBluetooth
+
+    if Thread.isMainThread {
+      self.lockScreen()
+    } else {
+      DispatchQueue.main.async { self.lockScreen() }
+    }
+    if settings.behaviorSleepPrevention {
+      sleepPrevention.enable()
+      pmsetService.enable()
+    }
+    if settings.triggerLidClose { lidMonitor.start() }
+    if settings.triggerPowerDisconnect { powerMonitor.start() }
+    if settings.triggerPowerButton { powerButtonMonitor.start() }
+    Logger.theft.info("Protection enabled via Bluetooth auto-arm")
+    ActivityLog.logAsync(.bluetooth, "Protection auto-armed (all devices out of range)")
+
+    notificationService.send(
+      message: "📶 <b>PROTECTION AUTO-ARMED</b>\n\nAll trusted Bluetooth devices left range.",
+      keyboard: .enabled,
+      completion: nil
+    )
+
+    delegate?.theftProtectionStateDidChange(self, state: .enabledBluetooth)
+  }
+
+  func disableProtection(remote: Bool = false) {
+    guard state == .enabled || state == .enabledBluetooth else { return }
+
+    let wasBluetooth = state == .enabledBluetooth
     state = .disabled
+    // Only set cooldown for genuine manual disarms (not bluetooth auto-disarm)
+    if !wasBluetooth {
+      lastManualDisarmTime = Date()
+    }
     lidMonitor.stop()
     powerMonitor.stop()
     powerButtonMonitor.stop()
@@ -155,20 +207,29 @@ final class TheftProtectionService {
     Logger.theft.info("Protection disabled")
 
     let method = remote ? "Telegram" : "Touch ID"
-    ActivityLog.logAsync(.disarmed, "Protection disabled via \(method)")
-
-    notificationService.send(
-      message: "🔴 <b>PROTECTION DISABLED</b>\n\nDisabled via \(method).",
-      keyboard: .disabled,
-      completion: nil
-    )
+    if wasBluetooth && !remote {
+      ActivityLog.logAsync(.bluetooth, "Protection auto-disarmed (trusted device returned)")
+      notificationService.send(
+        message: "📶 <b>PROTECTION AUTO-DISARMED</b>\n\nTrusted Bluetooth device returned.",
+        keyboard: .disabled,
+        completion: nil
+      )
+    } else {
+      ActivityLog.logAsync(.disarmed, "Protection disabled via \(method)")
+      notificationService.send(
+        message: "🔴 <b>PROTECTION DISABLED</b>\n\nDisabled via \(method).",
+        keyboard: .disabled,
+        completion: nil
+      )
+    }
 
     delegate?.theftProtectionStateDidChange(self, state: .disabled)
   }
 
   func activateTheftMode(trigger: TheftTrigger) {
-    guard state != .theftMode else { return }
+    guard state == .enabled || state == .enabledBluetooth else { return }
 
+    stateBeforeTheft = state
     state = .theftMode
     currentTrigger = trigger
     updateCount = 0
@@ -203,7 +264,9 @@ final class TheftProtectionService {
   func deactivateTheftMode(remote: Bool = false) {
     guard state == .theftMode else { return }
 
-    state = .enabled
+    let restoredState = stateBeforeTheft ?? .enabled
+    state = restoredState
+    stateBeforeTheft = nil
     stopTracking()
     updateCount = 0
     currentTrigger = nil
@@ -220,7 +283,7 @@ final class TheftProtectionService {
       completion: nil
     )
 
-    delegate?.theftProtectionStateDidChange(self, state: .enabled)
+    delegate?.theftProtectionStateDidChange(self, state: restoredState)
   }
 
   func sendStatus() {
@@ -235,6 +298,9 @@ final class TheftProtectionService {
         keyboard = .disabled
       case .enabled:
         status = "✅ Monitoring"
+        keyboard = .enabled
+      case .enabledBluetooth:
+        status = "📶 Auto-Armed (Bluetooth)"
         keyboard = .enabled
       case .theftMode:
         status = "🚨 THEFT MODE ACTIVE"
@@ -277,7 +343,7 @@ final class TheftProtectionService {
   }
 
   func sendTestAlert() {
-    let keyboard: TelegramKeyboard = state == .disabled ? .disabled : .enabled
+    let keyboard: TelegramKeyboard = (state == .disabled) ? .disabled : .enabled
     deviceInfoCollector.collect { [weak self] info in
       self?.notificationService.send(
         message: "🧪 <b>TEST ALERT</b>\n\n\(info.formattedMessage)",
@@ -413,7 +479,7 @@ extension TheftProtectionService: SleepWakeDelegate {
   func systemWillSleep() {
     ActivityLog.logAsync(.power, "System will sleep")
     // Check lid right before sleep (only if enabled)
-    if state == .enabled && SettingsService.shared.triggerLidClose && lidMonitor.isClosed {
+    if (state == .enabled || state == .enabledBluetooth) && SettingsService.shared.triggerLidClose && lidMonitor.isClosed {
       activateTheftMode(trigger: .lidClosed)
     }
   }
@@ -421,7 +487,7 @@ extension TheftProtectionService: SleepWakeDelegate {
   func systemDidWake() {
     ActivityLog.logAsync(.power, "System did wake")
     // On any wake (including DarkWake), check lid and re-enable sleep prevention
-    if state == .enabled {
+    if state == .enabled || state == .enabledBluetooth {
       if SettingsService.shared.behaviorSleepPrevention {
         sleepPrevention.enable()
       }
@@ -439,7 +505,7 @@ extension TheftProtectionService: SleepWakeDelegate {
 // MARK: - PowerMonitorDelegate
 extension TheftProtectionService: PowerMonitorDelegate {
   func powerMonitorDidDetectDisconnect(_ monitor: PowerMonitorService) {
-    guard state == .enabled else { return }
+    guard state == .enabled || state == .enabledBluetooth else { return }
     guard SettingsService.shared.triggerPowerDisconnect else { return }
     ActivityLog.logAsync(.trigger, "Power disconnected detected")
     activateTheftMode(trigger: .powerDisconnected)
@@ -460,5 +526,36 @@ extension TheftProtectionService: PowerButtonDelegate {
 extension TheftProtectionService: GlobalShortcutDelegate {
   func globalShortcutTriggered() {
     delegate?.theftProtectionShortcutTriggered(self)
+  }
+
+  func bluetoothShortcutTriggered() {
+    delegate?.theftProtectionBluetoothShortcutTriggered(self)
+  }
+}
+
+// MARK: - BluetoothProximityDelegate
+extension TheftProtectionService: BluetoothProximityDelegate {
+  func bluetoothProximityAllDevicesLost(_ service: BluetoothProximityService) {
+    guard SettingsService.shared.bluetoothAutoArmEnabled else { return }
+    guard state == .disabled else { return }
+
+    // Suppress auto-arm for 5 min after manual disarm
+    if let lastDisarm = lastManualDisarmTime,
+       Date().timeIntervalSince(lastDisarm) < 300 {
+      Logger.bluetooth.info("Skipping auto-arm — manual disarm cooldown active")
+      ActivityLog.logAsync(.bluetooth, "Auto-arm suppressed (manual disarm cooldown)")
+      return
+    }
+
+    enableProtectionBluetooth()
+  }
+
+  func bluetoothProximityDeviceReturned(_ service: BluetoothProximityService, device: TrustedBLEDevice) {
+    guard SettingsService.shared.bluetoothAutoArmEnabled else { return }
+    guard state == .enabledBluetooth else { return }
+
+    Logger.bluetooth.info("Auto-disarming — device returned: \(device.name)")
+    ActivityLog.logAsync(.bluetooth, "Auto-disarming — \(device.name) returned")
+    disableProtection()
   }
 }

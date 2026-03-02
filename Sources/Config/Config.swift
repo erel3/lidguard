@@ -11,6 +11,7 @@ extension Logger {
   static let system = Logger(subsystem: Config.App.bundleIdentifier, category: "system")
   static let power = Logger(subsystem: Config.App.bundleIdentifier, category: "power")
   static let update = Logger(subsystem: Config.App.bundleIdentifier, category: "update")
+  static let bluetooth = Logger(subsystem: Config.App.bundleIdentifier, category: "bluetooth")
 }
 
 enum Config {
@@ -36,6 +37,14 @@ enum Config {
   enum GitHub {
     static let releasesURL = "https://api.github.com/repos/Erel3/lidguard/releases"
     static let autoCheckInterval: TimeInterval = 2 * 24 * 60 * 60  // 2 days
+  }
+
+  enum Bluetooth {
+    static let scanDuration: TimeInterval = 3
+    static let scanPause: TimeInterval = 15
+    static let defaultRssiThreshold: Int = -70
+    static let defaultArmGracePeriod: TimeInterval = 30
+    static let defaultDisarmGracePeriod: TimeInterval = 5
   }
 
   enum App {

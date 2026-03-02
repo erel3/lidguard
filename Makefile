@@ -64,8 +64,7 @@ _bundle:
 	    -e "s/<string>1</<string>$$(echo $$VERSION | tr -d '.-dev')</" \
 	    Info.plist > $(BUNDLE)/Contents/Info.plist; \
 	cp Resources/AppIcon.icns $(BUNDLE)/Contents/Resources/ 2>/dev/null || true; \
-	TIMESTAMP_FLAG=""; \
-	if [ -z "$(SUFFIX)" ]; then TIMESTAMP_FLAG="--timestamp"; fi; \
+	TIMESTAMP_FLAG=$$(if [ -z "$(SUFFIX)" ]; then echo "--timestamp"; else echo "--timestamp=none"; fi); \
 	codesign --force --sign "$(CODESIGN_ID)" --entitlements LidGuard.entitlements \
 		-o runtime $$TIMESTAMP_FLAG \
 		-r='$(CODESIGN_REQ)' \
