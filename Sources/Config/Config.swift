@@ -40,10 +40,10 @@ enum Config {
   }
 
   enum Bluetooth {
-    static let scanDuration: TimeInterval = 3
-    static let scanPause: TimeInterval = 15
+    static let scanDuration: TimeInterval = 7
+    static let scanPause: TimeInterval = 53
     static let defaultRssiThreshold: Int = -70
-    static let defaultArmGracePeriod: TimeInterval = 30
+    static let defaultArmGracePeriod: TimeInterval = 120
     static let defaultDisarmGracePeriod: TimeInterval = 5
   }
 

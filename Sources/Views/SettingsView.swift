@@ -388,7 +388,7 @@ struct SettingsView: View {
         Section {
           LabeledContent("Arm delay") {
             HStack {
-              Slider(value: $bluetoothArmGracePeriod, in: 5...120, step: 5)
+              Slider(value: $bluetoothArmGracePeriod, in: 60...300, step: 10)
               Text("\(Int(bluetoothArmGracePeriod))s")
                 .monospacedDigit()
                 .frame(width: 40, alignment: .trailing)
