@@ -86,7 +86,11 @@ final class TheftProtectionService {
     NotificationCenter.default.addObserver(
       forName: .bluetoothSettingsChanged, object: nil, queue: .main
     ) { [weak self] _ in
-      self?.bluetoothProximityService.restart()
+      if SettingsService.shared.bluetoothAutoArmEnabled {
+        self?.bluetoothProximityService.restart()
+      } else {
+        self?.bluetoothProximityService.stop()
+      }
       self?.globalShortcutService.restart()
     }
   }
