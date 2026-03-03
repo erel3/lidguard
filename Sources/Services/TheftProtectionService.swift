@@ -113,10 +113,41 @@ final class TheftProtectionService {
     bluetoothProximityService.stop()
   }
 
+  private func activeTriggerNames() -> [String] {
+    let settings = SettingsService.shared
+    var result: [String] = []
+    if settings.triggerLidClose { result.append("lid close") }
+    if settings.triggerPowerDisconnect { result.append("power disconnect") }
+    if settings.triggerPowerButton { result.append("power button") }
+    return result
+  }
+
+  private func activeBehaviorNames() -> [String] {
+    let settings = SettingsService.shared
+    var result: [String] = []
+    if settings.behaviorSleepPrevention { result.append("sleep prevention") }
+    if settings.behaviorShutdownBlocking { result.append("shutdown blocking") }
+    if settings.behaviorLockScreen { result.append("lock screen") }
+    if settings.behaviorAlarm {
+      result.append(settings.behaviorAutoAlarm ? "alarm (auto)" : "alarm")
+    }
+    return result
+  }
+
+  private func startMonitors() {
+    let settings = SettingsService.shared
+    if settings.behaviorSleepPrevention {
+      sleepPrevention.enable()
+      pmsetService.enable()
+    }
+    if settings.triggerLidClose { lidMonitor.start() }
+    if settings.triggerPowerDisconnect { powerMonitor.start() }
+    if settings.triggerPowerButton { powerButtonMonitor.start() }
+  }
+
   func enableProtection(notify: Bool = true, lockScreen: Bool = false) {
     guard state == .disabled else { return }
 
-    let settings = SettingsService.shared
     state = .enabled
 
     if lockScreen {
@@ -126,30 +157,13 @@ final class TheftProtectionService {
         DispatchQueue.main.async { self.lockScreen() }
       }
     }
-    if settings.behaviorSleepPrevention {
-      sleepPrevention.enable()
-      pmsetService.enable()
-    }
-    if settings.triggerLidClose { lidMonitor.start() }
-    if settings.triggerPowerDisconnect { powerMonitor.start() }
-    if settings.triggerPowerButton { powerButtonMonitor.start() }
+    startMonitors()
     Logger.theft.info("Protection enabled")
     ActivityLog.logAsync(.armed, "Protection enabled")
 
     if notify {
-      var triggers: [String] = []
-      if settings.triggerLidClose { triggers.append("lid close") }
-      if settings.triggerPowerDisconnect { triggers.append("power disconnect") }
-      if settings.triggerPowerButton { triggers.append("power button") }
-
-      var behaviors: [String] = []
-      if settings.behaviorSleepPrevention { behaviors.append("sleep prevention") }
-      if settings.behaviorShutdownBlocking { behaviors.append("shutdown blocking") }
-      if settings.behaviorLockScreen { behaviors.append("lock screen") }
-      if settings.behaviorAlarm {
-        behaviors.append(settings.behaviorAutoAlarm ? "alarm (auto)" : "alarm")
-      }
-
+      let triggers = activeTriggerNames()
+      let behaviors = activeBehaviorNames()
       var message = "🟢 <b>PROTECTION ENABLED</b>\n\n"
       message += "⚡️ <b>Triggers:</b> \(triggers.isEmpty ? "none" : triggers.joined(separator: ", "))\n"
       message += "🛡 <b>Behaviors:</b> \(behaviors.isEmpty ? "none" : behaviors.joined(separator: ", "))"
@@ -167,7 +181,6 @@ final class TheftProtectionService {
   func enableProtectionBluetooth() {
     guard state == .disabled else { return }
 
-    let settings = SettingsService.shared
     state = .enabledBluetooth
 
     if Thread.isMainThread {
@@ -175,13 +188,7 @@ final class TheftProtectionService {
     } else {
       DispatchQueue.main.async { self.lockScreen() }
     }
-    if settings.behaviorSleepPrevention {
-      sleepPrevention.enable()
-      pmsetService.enable()
-    }
-    if settings.triggerLidClose { lidMonitor.start() }
-    if settings.triggerPowerDisconnect { powerMonitor.start() }
-    if settings.triggerPowerButton { powerButtonMonitor.start() }
+    startMonitors()
     Logger.theft.info("Protection enabled via Bluetooth auto-arm")
     ActivityLog.logAsync(.bluetooth, "Protection auto-armed (all devices out of range)")
 
@@ -311,22 +318,10 @@ final class TheftProtectionService {
         keyboard = AlarmAudioManager.shared.isPlaying ? .theftModeAlarmOn : .theftMode
       }
 
-      let settings = SettingsService.shared
       let lidState = self.lidMonitor.isClosed ? "closed" : "open"
       let chargerState = self.powerMonitor.isCharging() ? "connected" : "disconnected"
-
-      var triggers: [String] = []
-      if settings.triggerLidClose { triggers.append("lid close") }
-      if settings.triggerPowerDisconnect { triggers.append("power disconnect") }
-      if settings.triggerPowerButton { triggers.append("power button") }
-
-      var behaviors: [String] = []
-      if settings.behaviorSleepPrevention { behaviors.append("sleep prevention") }
-      if settings.behaviorShutdownBlocking { behaviors.append("shutdown blocking") }
-      if settings.behaviorLockScreen { behaviors.append("lock screen") }
-      if settings.behaviorAlarm {
-        behaviors.append(settings.behaviorAutoAlarm ? "alarm (auto)" : "alarm")
-      }
+      let triggers = self.activeTriggerNames()
+      let behaviors = self.activeBehaviorNames()
 
       var hardwareInfo = ""
       hardwareInfo += "🖥 <b>Lid:</b> \(lidState)\n"
@@ -342,6 +337,7 @@ final class TheftProtectionService {
         )
       }
 
+      let settings = SettingsService.shared
       if settings.bluetoothAutoArmEnabled && settings.hasTrustedBLEDevices {
         self.bluetoothProximityService.getDeviceStatus { devices in
           var bt = "📶 <b>Bluetooth:</b> auto-arm on\n"

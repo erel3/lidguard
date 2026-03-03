@@ -237,8 +237,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let eyeW = size * 0.36
         let eyeH = size * 0.14
         let cx = size * 0.5
-        drawEyeShape(ctx: ctx, s: size, style: style, eyeCY: eyeCY, eyeW: eyeW, eyeH: eyeH,
-                     leftX: cx - eyeW / 2, rightX: cx + eyeW / 2, cx: cx)
+        let eye = EyeGeometry(centerY: eyeCY, width: eyeW, height: eyeH, centerX: cx)
+        drawEyeShape(ctx: ctx, s: size, style: style, eye: eye)
       }
     }
     image.unlockFocus()
@@ -281,8 +281,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
       let eyeW = size * 0.36
       let eyeH = size * 0.14
       let cx = size * 0.5
-      drawEyeShape(ctx: ctx, s: size, style: style, eyeCY: eyeCY, eyeW: eyeW, eyeH: eyeH,
-                   leftX: cx - eyeW / 2, rightX: cx + eyeW / 2, cx: cx)
+      let eye = EyeGeometry(centerY: eyeCY, width: eyeW, height: eyeH, centerX: cx)
+      drawEyeShape(ctx: ctx, s: size, style: style, eye: eye)
     }
     image.unlockFocus()
     image.isTemplate = false
@@ -341,9 +341,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     ctx.fillPath()
   }
 
-  private func drawEyeShape(ctx: CGContext, s: CGFloat, style: MenuBarIconStyle,
-                             eyeCY: CGFloat, eyeW: CGFloat, eyeH: CGFloat,
-                             leftX: CGFloat, rightX: CGFloat, cx: CGFloat) {
+  private struct EyeGeometry {
+    let centerY: CGFloat
+    let width: CGFloat
+    let height: CGFloat
+    let centerX: CGFloat
+    var leftX: CGFloat { centerX - width / 2 }
+    var rightX: CGFloat { centerX + width / 2 }
+  }
+
+  private func drawEyeShape(ctx: CGContext, s: CGFloat, style: MenuBarIconStyle, eye: EyeGeometry) {
+    let eyeCY = eye.centerY, eyeW = eye.width, eyeH = eye.height
+    let leftX = eye.leftX, rightX = eye.rightX, cx = eye.centerX
     switch style {
     case .eyeOpen, .eyeAlert:
       let path = CGMutablePath()

@@ -77,7 +77,9 @@ extension LocationService: CLLocationManagerDelegate {
   func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
     if let location = locations.last {
       cachedLocation = location
-      ActivityLog.logAsync(.location, "Location updated: \(String(format: "%.4f", location.coordinate.latitude)), \(String(format: "%.4f", location.coordinate.longitude))")
+      let lat = String(format: "%.4f", location.coordinate.latitude)
+      let lon = String(format: "%.4f", location.coordinate.longitude)
+      ActivityLog.logAsync(.location, "Location updated: \(lat), \(lon)")
     }
     complete(with: locations.last)
   }
