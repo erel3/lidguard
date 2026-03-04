@@ -7,7 +7,7 @@ CODESIGN_ID ?= Developer ID Application: Andrey Kim (73R36N2A46)
 CODESIGN_REQ ?= designated => anchor apple generic and certificate leaf[subject.OU] = "73R36N2A46"
 NOTARIZE_PROFILE ?= Notarize
 
-.PHONY: build run run-debug install release clean version icon
+.PHONY: build run run-debug install release clean version icon lint
 
 VERSION := $(shell cat $(VERSION_FILE) 2>/dev/null || echo "1.0.0")
 
@@ -92,6 +92,10 @@ _bump:
 	esac; \
 	echo "$$MAJOR.$$MINOR.$$PATCH" > $(VERSION_FILE); \
 	echo "Version bumped to $$MAJOR.$$MINOR.$$PATCH"
+
+lint:
+	@TOOLCHAIN_DIR=$$(dirname "$$(dirname "$$(xcrun --find swiftc)")"); \
+	DYLD_FRAMEWORK_PATH="$$TOOLCHAIN_DIR/lib" swiftlint lint --strict Sources/
 
 icon:
 	swift Scripts/generate_icon.swift
