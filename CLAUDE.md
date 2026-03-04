@@ -8,6 +8,8 @@ LidGuard is a macOS menu bar application for laptop theft protection. Detects li
 
 **Swift 5.9 / macOS 14.0+ / SPM** — Not sandboxed (requires IOKit, sudo, Accessibility).
 
+**IMPORTANT**: Always use `make` commands for building, linting, and running. Never use `swift build` or `swift run` directly.
+
 ## Build Commands
 
 ```bash
@@ -16,6 +18,7 @@ make run                 # Bundle with -dev suffix and open (main dev workflow)
 make run-debug           # Build debug binary and run directly (fast, no bundle)
 make install             # Copy current dist/.app to /Applications
 make release             # Bump version, build, notarize, commit, tag, push, gh release
+make lint                # Run swiftlint --strict on Sources/
 make clean               # Remove .build and dist
 make icon                # Regenerate AppIcon.icns from Scripts/generate_icon.swift
 BUMP=minor make release  # Bump minor instead of patch (also: major)

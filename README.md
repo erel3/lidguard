@@ -64,6 +64,7 @@ Grab the latest `.zip` from [**Releases**](https://github.com/Erel3/lidguard/rel
 git clone https://github.com/Erel3/lidguard.git
 cd lidguard
 make run            # build .app with -dev suffix and open
+make lint           # run swiftlint
 make install        # install to /Applications
 ```
 
