@@ -32,6 +32,7 @@ final class LidMonitorService {
   func stop() {
     timer?.cancel()
     timer = nil
+    lastState = nil
     Logger.lid.info("Stopped")
   }
 

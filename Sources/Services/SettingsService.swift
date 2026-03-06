@@ -49,7 +49,6 @@ final class SettingsService {
     static let bluetoothAutoArmEnabled = "lidguard.bluetoothAutoArmEnabled"
     static let trustedBLEDevices = "lidguard.trustedBLEDevices"
     static let bluetoothArmGracePeriod = "lidguard.bluetoothArmGracePeriod"
-    static let bluetoothDisarmGracePeriod = "lidguard.bluetoothDisarmGracePeriod"
   }
 
   private enum KeychainKeys {
@@ -288,11 +287,6 @@ final class SettingsService {
     set { defaults.set(newValue, forKey: Keys.bluetoothArmGracePeriod) }
   }
 
-  var bluetoothDisarmGracePeriod: TimeInterval {
-    get { defaults.object(forKey: Keys.bluetoothDisarmGracePeriod) as? TimeInterval ?? Config.Bluetooth.defaultDisarmGracePeriod }
-    set { defaults.set(newValue, forKey: Keys.bluetoothDisarmGracePeriod) }
-  }
-
   var hasTrustedBLEDevices: Bool {
     !trustedBLEDevices.isEmpty
   }
@@ -333,7 +327,6 @@ final class SettingsService {
     defaults.removeObject(forKey: Keys.bluetoothAutoArmEnabled)
     defaults.removeObject(forKey: Keys.trustedBLEDevices)
     defaults.removeObject(forKey: Keys.bluetoothArmGracePeriod)
-    defaults.removeObject(forKey: Keys.bluetoothDisarmGracePeriod)
 
     // Clear Keychain
     KeychainService.deleteAll()

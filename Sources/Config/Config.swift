@@ -36,15 +36,13 @@ enum Config {
 
   enum GitHub {
     static let releasesURL = "https://api.github.com/repos/Erel3/lidguard/releases"
-    static let autoCheckInterval: TimeInterval = 2 * 24 * 60 * 60  // 2 days
+    static let autoCheckInterval: TimeInterval = 12 * 60 * 60  // 12 hours
   }
 
   enum Bluetooth {
     static let scanDuration: TimeInterval = 15
-    static let scanPause: TimeInterval = 45
     static let defaultRssiThreshold: Int = -70
     static let defaultArmGracePeriod: TimeInterval = 120
-    static let defaultDisarmGracePeriod: TimeInterval = 5
     static let rssiHysteresis: Int = 5
     static let btRecoveryCooldown: TimeInterval = 15
   }

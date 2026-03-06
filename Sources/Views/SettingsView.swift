@@ -58,7 +58,6 @@ struct SettingsView: View {
   // Bluetooth
   @State private var bluetoothAutoArmEnabled: Bool = false
   @State private var bluetoothArmGracePeriod: Double = 30
-  @State private var bluetoothDisarmGracePeriod: Double = 5
   @State private var trustedBLEDevices: [TrustedBLEDevice] = []
   @State private var btShortcutEnabled: Bool = false
   @State private var btShortcutKeyCode: Int = -1
@@ -394,16 +393,8 @@ struct SettingsView: View {
                 .frame(width: 40, alignment: .trailing)
             }
           }
-          LabeledContent("Disarm delay") {
-            HStack {
-              Slider(value: $bluetoothDisarmGracePeriod, in: 0...30, step: 1)
-              Text("\(Int(bluetoothDisarmGracePeriod))s")
-                .monospacedDigit()
-                .frame(width: 40, alignment: .trailing)
-            }
-          }
         } header: {
-          Text("Grace Periods")
+          Text("Arm Delay")
         }
 
         Section {
@@ -480,7 +471,6 @@ struct SettingsView: View {
     behaviorAlarm = settings.behaviorAlarm
     bluetoothAutoArmEnabled = settings.bluetoothAutoArmEnabled
     bluetoothArmGracePeriod = settings.bluetoothArmGracePeriod
-    bluetoothDisarmGracePeriod = settings.bluetoothDisarmGracePeriod
     trustedBLEDevices = settings.trustedBLEDevices
     btShortcutEnabled = settings.btShortcutEnabled
     btShortcutKeyCode = settings.btShortcutKeyCode
@@ -513,7 +503,6 @@ struct SettingsView: View {
 
     settings.bluetoothAutoArmEnabled = bluetoothAutoArmEnabled
     settings.bluetoothArmGracePeriod = bluetoothArmGracePeriod
-    settings.bluetoothDisarmGracePeriod = bluetoothDisarmGracePeriod
     settings.trustedBLEDevices = trustedBLEDevices
     settings.btShortcutEnabled = btShortcutEnabled
     settings.btShortcutKeyCode = btShortcutKeyCode

@@ -29,15 +29,16 @@ final class BluetoothProximityService: NSObject {
   private var isMonitoring = false
   private var isDiscoveryMode = false
   private var scanTimer: DispatchSourceTimer?
-  private var armGraceTimer: DispatchSourceTimer?
-  private var disarmGraceTimer: DispatchSourceTimer?
 
-  private var presentDevices: Set<UUID> = []
+  private var seenThisCycle: Set<UUID> = []
   private var lastSeenRSSI: [UUID: Int] = [:]
+  private var lastSeenTime: [UUID: Date] = [:]
   private var nearDevices: Set<UUID> = []
+  private var allDevicesLostNotified = false
   private var btRecoveryUntil: Date?
   private var cachedTrustedDevices: [TrustedBLEDevice] = []
   private var cachedTrustedIDs: Set<UUID> = []
+  private var cachedArmDelay: TimeInterval = Config.Bluetooth.defaultArmGracePeriod
 
   // Discovery mode: live RSSI for all peripherals
   private var discoveredDevices: [UUID: (name: String, rssi: Int)] = [:]
@@ -65,6 +66,8 @@ final class BluetoothProximityService: NSObject {
       }
       cachedTrustedDevices = devices
       cachedTrustedIDs = Set(devices.map(\.id))
+      cachedArmDelay = max(60.0, SettingsService.shared.bluetoothArmGracePeriod)
+      btRecoveryUntil = Date().addingTimeInterval(cachedArmDelay)
       isMonitoring = true
       if centralManager == nil {
         centralManager = CBCentralManager(delegate: self, queue: queue)
@@ -79,8 +82,15 @@ final class BluetoothProximityService: NSObject {
   /// Returns (deviceName, rssi or nil if absent) for each trusted device. Thread-safe.
   func getDeviceStatus(completion: @escaping ([(name: String, rssi: Int?)]) -> Void) {
     queue.async { [self] in
+      let now = Date()
       let result = cachedTrustedDevices.map { device -> (name: String, rssi: Int?) in
-        let rssi = presentDevices.contains(device.id) ? lastSeenRSSI[device.id] : nil
+        let isPresent: Bool
+        if let seen = lastSeenTime[device.id] {
+          isPresent = now.timeIntervalSince(seen) < cachedArmDelay
+        } else {
+          isPresent = false
+        }
+        let rssi = isPresent ? lastSeenRSSI[device.id] : nil
         return (name: device.name, rssi: rssi)
       }
       completion(result)
@@ -92,11 +102,11 @@ final class BluetoothProximityService: NSObject {
       guard isMonitoring else { return }
       isMonitoring = false
       stopScanCycle()
-      cancelArmGrace()
-      cancelDisarmGrace()
-      presentDevices.removeAll()
+      seenThisCycle.removeAll()
       lastSeenRSSI.removeAll()
+      lastSeenTime.removeAll()
       nearDevices.removeAll()
+      allDevicesLostNotified = false
       btRecoveryUntil = nil
       if !isDiscoveryMode {
         centralManager = nil
@@ -112,11 +122,11 @@ final class BluetoothProximityService: NSObject {
       if isMonitoring {
         isMonitoring = false
         stopScanCycle()
-        cancelArmGrace()
-        cancelDisarmGrace()
-        presentDevices.removeAll()
+        seenThisCycle.removeAll()
         lastSeenRSSI.removeAll()
+        lastSeenTime.removeAll()
         nearDevices.removeAll()
+        allDevicesLostNotified = false
         btRecoveryUntil = nil
       }
       // Inline start
@@ -128,6 +138,8 @@ final class BluetoothProximityService: NSObject {
       }
       cachedTrustedDevices = devices
       cachedTrustedIDs = Set(devices.map(\.id))
+      cachedArmDelay = max(60.0, SettingsService.shared.bluetoothArmGracePeriod)
+      btRecoveryUntil = Date().addingTimeInterval(cachedArmDelay)
       isMonitoring = true
       if centralManager == nil {
         centralManager = CBCentralManager(delegate: self, queue: queue)
@@ -176,11 +188,15 @@ final class BluetoothProximityService: NSObject {
     scanBurst()
   }
 
+  private var scanPause: TimeInterval {
+    let cycle = cachedArmDelay / 4.0
+    return min(60, max(15, cycle - Config.Bluetooth.scanDuration))
+  }
+
   private func scanBurst() {
     guard isMonitoring, centralManager?.state == .poweredOn else { return }
 
-    presentDevices.removeAll()
-    lastSeenRSSI.removeAll()
+    seenThisCycle.removeAll()
 
     let allowDuplicates = isDiscoveryMode
     centralManager?.scanForPeripherals(
@@ -204,11 +220,17 @@ final class BluetoothProximityService: NSObject {
       centralManager?.stopScan()
     }
 
+    // Update lastSeenTime for devices detected this cycle
+    let now = Date()
+    for deviceID in seenThisCycle where cachedTrustedIDs.contains(deviceID) {
+      lastSeenTime[deviceID] = now
+    }
+
     evaluatePresence()
 
     scanTimer?.cancel()
     scanTimer = DispatchSource.makeTimerSource(queue: queue)
-    scanTimer?.schedule(deadline: .now() + Config.Bluetooth.scanPause)
+    scanTimer?.schedule(deadline: .now() + scanPause)
     scanTimer?.setEventHandler { [weak self] in
       self?.scanBurst()
     }
@@ -223,23 +245,22 @@ final class BluetoothProximityService: NSObject {
 
   // MARK: - Presence Evaluation (called on queue)
 
-  private func evaluatePresence() {
-    let trusted = cachedTrustedDevices
-    guard !trusted.isEmpty else { return }
-
-    // BT recovery cooldown — skip evaluation after Bluetooth powers back on
-    if let recoveryUntil = btRecoveryUntil {
-      if Date() < recoveryUntil {
-        Logger.bluetooth.debug("Skipping presence evaluation — BT recovery cooldown active")
-        return
-      }
-      Logger.bluetooth.debug("BT recovery cooldown expired, resuming evaluation")
-      btRecoveryUntil = nil
+  private func checkRecoveryCooldown() -> Bool {
+    guard let recoveryUntil = btRecoveryUntil else { return false }
+    if Date() < recoveryUntil {
+      Logger.bluetooth.debug("Skipping presence evaluation — BT recovery cooldown active")
+      return true
     }
+    Logger.bluetooth.debug("BT recovery cooldown expired, resuming evaluation")
+    btRecoveryUntil = nil
+    return false
+  }
 
+  private func computeNearDevices(at now: Date) -> Set<UUID> {
     var currentNear = Set<UUID>()
-    for device in trusted {
-      guard presentDevices.contains(device.id),
+    for device in cachedTrustedDevices {
+      guard let seen = lastSeenTime[device.id],
+            now.timeIntervalSince(seen) < cachedArmDelay,
             let rssi = lastSeenRSSI[device.id] else { continue }
 
       let wasNear = nearDevices.contains(device.id)
@@ -251,73 +272,60 @@ final class BluetoothProximityService: NSObject {
         currentNear.insert(device.id)
       }
     }
+    return currentNear
+  }
+
+  private func evaluatePresence() {
+    guard isMonitoring, !cachedTrustedDevices.isEmpty else { return }
+    guard !checkRecoveryCooldown() else { return }
+
+    let now = Date()
+    let previousNear = nearDevices
+    let currentNear = computeNearDevices(at: now)
     nearDevices = currentNear
 
     if currentNear.isEmpty {
-      if armGraceTimer == nil {
-        Logger.bluetooth.info("All trusted devices lost, starting arm grace period")
-        ActivityLog.logAsync(.bluetooth, "All trusted devices out of range, grace period started")
-        startArmGrace()
+      handleAllDevicesLost(previousNear: previousNear, now: now)
+    } else if allDevicesLostNotified || previousNear.isEmpty {
+      handleDeviceReturned(currentNear: currentNear)
+    }
+  }
+
+  private func handleAllDevicesLost(previousNear: Set<UUID>, now: Date) {
+    guard !allDevicesLostNotified else { return }
+    let armDelay = cachedArmDelay
+    let seenTimes = lastSeenTime
+    let allGone = cachedTrustedDevices.allSatisfy { device in
+      guard let seen = seenTimes[device.id] else { return true }
+      return now.timeIntervalSince(seen) >= armDelay
+    }
+    guard allGone else {
+      if !previousNear.isEmpty {
+        Logger.bluetooth.info("All trusted devices out of range, waiting for arm delay")
+        ActivityLog.logAsync(.bluetooth, "All trusted devices out of range, waiting \(Int(armDelay))s")
       }
-      cancelDisarmGrace()
-    } else {
-      cancelArmGrace()
-      if disarmGraceTimer == nil {
-        guard let device = trusted.first(where: { currentNear.contains($0.id) }) else { return }
-        Logger.bluetooth.info("Trusted device returned: \(device.name)")
-        ActivityLog.logAsync(.bluetooth, "Device returned: \(device.name)")
-        startDisarmGrace(device: device)
-      }
+      return
     }
+    allDevicesLostNotified = true
+    Logger.bluetooth.info("All trusted devices gone for \(Int(armDelay))s, triggering auto-arm")
+    ActivityLog.logAsync(.bluetooth, "All devices out of range for \(Int(armDelay))s — auto-arming")
+    notifyDelegate { $0.bluetoothProximityAllDevicesLost(self) }
   }
 
-  // MARK: - Grace Periods (called on queue)
-
-  private func startArmGrace() {
-    cancelArmGrace()
-    let gracePeriod = max(1.0, SettingsService.shared.bluetoothArmGracePeriod)
-    armGraceTimer = DispatchSource.makeTimerSource(queue: queue)
-    armGraceTimer?.schedule(deadline: .now() + gracePeriod)
-    armGraceTimer?.setEventHandler { [weak self] in
-      guard let self = self else { return }
-      self.armGraceTimer = nil
-      Logger.bluetooth.info("Arm grace period expired, triggering auto-arm")
-      ActivityLog.logAsync(.bluetooth, "Grace period expired — auto-arming protection")
-      self.notifyDelegate { $0.bluetoothProximityAllDevicesLost(self) }
-    }
-    armGraceTimer?.resume()
-  }
-
-  private func cancelArmGrace() {
-    armGraceTimer?.cancel()
-    armGraceTimer = nil
-  }
-
-  private func startDisarmGrace(device: TrustedBLEDevice) {
-    cancelDisarmGrace()
-    let gracePeriod = max(0.0, SettingsService.shared.bluetoothDisarmGracePeriod)
-    disarmGraceTimer = DispatchSource.makeTimerSource(queue: queue)
-    disarmGraceTimer?.schedule(deadline: .now() + gracePeriod)
-    disarmGraceTimer?.setEventHandler { [weak self] in
-      guard let self = self else { return }
-      self.disarmGraceTimer = nil
-      Logger.bluetooth.info("Disarm grace period expired, triggering auto-disarm")
-      ActivityLog.logAsync(.bluetooth, "Device confirmed back — auto-disarming protection")
-      self.notifyDelegate { $0.bluetoothProximityDeviceReturned(self, device: device) }
-    }
-    disarmGraceTimer?.resume()
-  }
-
-  private func cancelDisarmGrace() {
-    disarmGraceTimer?.cancel()
-    disarmGraceTimer = nil
+  private func handleDeviceReturned(currentNear: Set<UUID>) {
+    guard let device = cachedTrustedDevices.first(where: { currentNear.contains($0.id) }) else { return }
+    Logger.bluetooth.info("Trusted device returned: \(device.name)")
+    ActivityLog.logAsync(.bluetooth, "Device returned: \(device.name)")
+    allDevicesLostNotified = false
+    notifyDelegate { $0.bluetoothProximityDeviceReturned(self, device: device) }
   }
 
   // MARK: - Delegate Dispatch
 
   private func notifyDelegate(_ block: @escaping (BluetoothProximityDelegate) -> Void) {
-    guard let delegate = delegate else { return }
-    CFRunLoopPerformBlock(CFRunLoopGetMain(), CFRunLoopMode.commonModes.rawValue) {
+    guard delegate != nil else { return }
+    CFRunLoopPerformBlock(CFRunLoopGetMain(), CFRunLoopMode.commonModes.rawValue) { [weak self] in
+      guard let delegate = self?.delegate else { return }
       block(delegate)
     }
     CFRunLoopWakeUp(CFRunLoopGetMain())
@@ -331,7 +339,6 @@ extension BluetoothProximityService: CBCentralManagerDelegate {
     case .poweredOn:
       Logger.bluetooth.info("Bluetooth powered on")
       if isMonitoring {
-        cancelArmGrace()
         btRecoveryUntil = Date().addingTimeInterval(Config.Bluetooth.btRecoveryCooldown)
         startScanCycle()
       }
@@ -346,10 +353,15 @@ extension BluetoothProximityService: CBCentralManagerDelegate {
       ActivityLog.logAsync(.bluetooth, "Bluetooth off — all devices considered gone")
       btRecoveryUntil = nil
       stopScanCycle()
-      cancelDisarmGrace()
-      // Bluetooth off = can't see any devices = all lost → start arm grace
-      if isMonitoring && armGraceTimer == nil {
-        startArmGrace()
+      // Schedule evaluation after arm delay so auto-arm fires even with BT off
+      if isMonitoring && !allDevicesLostNotified {
+        let delay = cachedArmDelay
+        scanTimer = DispatchSource.makeTimerSource(queue: queue)
+        scanTimer?.schedule(deadline: .now() + delay)
+        scanTimer?.setEventHandler { [weak self] in
+          self?.evaluatePresence()
+        }
+        scanTimer?.resume()
       }
     default:
       Logger.bluetooth.info("Bluetooth state: \(String(describing: central.state.rawValue))")
@@ -371,9 +383,9 @@ extension BluetoothProximityService: CBCentralManagerDelegate {
         ?? advertisementData[CBAdvertisementDataLocalNameKey] as? String
       if let name = name, !name.isEmpty {
         discoveredDevices[peripheral.identifier] = (name: name, rssi: rssiValue)
+        let snapshot = discoveredDevices
         DispatchQueue.main.async { [weak self] in
-          guard let self = self else { return }
-          self.onDiscoveryUpdate?(self.discoveredDevices)
+          self?.onDiscoveryUpdate?(snapshot)
         }
       }
     }
@@ -381,7 +393,7 @@ extension BluetoothProximityService: CBCentralManagerDelegate {
     // Monitoring mode: track trusted devices
     if isMonitoring {
       if cachedTrustedIDs.contains(peripheral.identifier) {
-        presentDevices.insert(peripheral.identifier)
+        seenThisCycle.insert(peripheral.identifier)
         lastSeenRSSI[peripheral.identifier] = rssiValue
       }
     }
