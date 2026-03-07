@@ -3,6 +3,7 @@ import Foundation
 
 extension Notification.Name {
   static let bluetoothSettingsChanged = Notification.Name("com.lidguard.bluetoothSettingsChanged")
+  static let daemonConnectionChanged = Notification.Name("com.lidguard.daemonConnectionChanged")
 }
 
 final class SettingsService {
@@ -31,6 +32,7 @@ final class SettingsService {
     static let behaviorAlarm = "lidguard.behaviorAlarm"
     static let behaviorAutoAlarm = "lidguard.behaviorAutoAlarm"
     static let alarmVolume = "lidguard.alarmVolume"
+    static let offlineSirenEnabled = "lidguard.offlineSirenEnabled"
 
     // Updates
     static let autoUpdateEnabled = "lidguard.autoUpdateEnabled"
@@ -168,6 +170,11 @@ final class SettingsService {
     set { defaults.set(newValue, forKey: Keys.alarmVolume) }
   }
 
+  var offlineSirenEnabled: Bool {
+    get { defaults.object(forKey: Keys.offlineSirenEnabled) as? Bool ?? false }
+    set { defaults.set(newValue, forKey: Keys.offlineSirenEnabled) }
+  }
+
   // MARK: - Updates
 
   var autoUpdateEnabled: Bool {
@@ -247,6 +254,7 @@ final class SettingsService {
     defaults.removeObject(forKey: Keys.behaviorAlarm)
     defaults.removeObject(forKey: Keys.behaviorAutoAlarm)
     defaults.removeObject(forKey: Keys.alarmVolume)
+    defaults.removeObject(forKey: Keys.offlineSirenEnabled)
     defaults.removeObject(forKey: Keys.autoUpdateEnabled)
     defaults.removeObject(forKey: Keys.lastUpdateCheckDate)
     defaults.removeObject(forKey: Keys.skippedVersion)

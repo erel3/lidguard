@@ -10,11 +10,11 @@ enum TelegramKeyboard {
 }
 
 protocol NotificationService {
-  func send(message: String, keyboard: TelegramKeyboard, completion: (() -> Void)?)
+  func send(message: String, keyboard: TelegramKeyboard, completion: ((Bool) -> Void)?)
 }
 
 extension NotificationService {
-  func send(message: String, completion: (() -> Void)?) {
+  func send(message: String, completion: ((Bool) -> Void)?) {
     send(message: message, keyboard: .none, completion: completion)
   }
 }
@@ -26,18 +26,18 @@ final class TelegramService: NotificationService {
     self.session = session
   }
 
-  func send(message: String, keyboard: TelegramKeyboard = .none, completion: (() -> Void)? = nil) {
+  func send(message: String, keyboard: TelegramKeyboard = .none, completion: ((Bool) -> Void)? = nil) {
     guard Config.Telegram.isConfigured && Config.Telegram.isEnabled,
           let botToken = Config.Telegram.botToken,
           let chatId = Config.Telegram.chatId else {
       Logger.telegram.debug("Telegram not configured or disabled, skipping")
-      completion?()
+      completion?(false)
       return
     }
 
     let urlString = "https://api.telegram.org/bot\(botToken)/sendMessage"
     guard let url = URL(string: urlString) else {
-      completion?()
+      completion?(false)
       return
     }
 

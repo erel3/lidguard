@@ -9,7 +9,7 @@ enum NetworkRetry {
     delay: TimeInterval = 2.0,
     logger: Logger,
     logCategory: LogCategory,
-    completion: (() -> Void)? = nil
+    completion: ((Bool) -> Void)? = nil
   ) {
     session.dataTask(with: request) { _, response, error in
       if let error = error {
@@ -23,6 +23,8 @@ enum NetworkRetry {
           }
           return
         }
+        completion?(false)
+        return
       } else if let httpResponse = response as? HTTPURLResponse, !(200...299).contains(httpResponse.statusCode) {
         logger.error("HTTP error: \(httpResponse.statusCode)")
         ActivityLog.logAsync(logCategory, "HTTP error: \(httpResponse.statusCode)")
@@ -34,11 +36,12 @@ enum NetworkRetry {
           }
           return
         }
-      } else {
-        logger.debug("Sent")
-        ActivityLog.logAsync(logCategory, "Sent")
+        completion?(false)
+        return
       }
-      completion?()
+      logger.debug("Sent")
+      ActivityLog.logAsync(logCategory, "Sent")
+      completion?(true)
     }.resume()
   }
 }

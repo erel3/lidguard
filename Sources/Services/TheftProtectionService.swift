@@ -28,6 +28,8 @@ protocol TheftProtectionDelegate: AnyObject {
 }
 
 final class TheftProtectionService {
+  static private(set) var daemonConnected = false
+
   weak var delegate: TheftProtectionDelegate?
 
   private let notificationService: NotificationService
@@ -47,6 +49,8 @@ final class TheftProtectionService {
   private var updateCount = 0
   private var currentTrigger: TheftTrigger?
   private var stateBeforeTheft: ProtectionState?
+  private var offlineSirenTimer: DispatchSourceTimer?
+  private var telegramSucceededInTheftMode = false
 
   private(set) var state: ProtectionState = .disabled
 
@@ -265,8 +269,16 @@ final class TheftProtectionService {
     }
 
     // Auto-play alarm if enabled
-    if SettingsService.shared.behaviorAlarm && SettingsService.shared.behaviorAutoAlarm {
+    if settings.behaviorAlarm && settings.behaviorAutoAlarm {
       AlarmAudioManager.shared.play()
+    }
+
+    // Offline siren: if Telegram not available, play siren immediately
+    telegramSucceededInTheftMode = false
+    if settings.offlineSirenEnabled && settings.behaviorAlarm
+       && (!Config.Telegram.isConfigured || !Config.Telegram.isEnabled) {
+      AlarmAudioManager.shared.play()
+      ActivityLog.logAsync(.theft, "Offline siren triggered (Telegram not configured/disabled)")
     }
 
     sendUpdate(type: .initial)
@@ -285,6 +297,8 @@ final class TheftProtectionService {
     updateCount = 0
     currentTrigger = nil
     AlarmAudioManager.shared.stop()
+    cancelOfflineSirenTimer()
+    telegramSucceededInTheftMode = false
     daemonClient.hideLockScreen()
     Logger.theft.info("Theft mode deactivated")
 
@@ -425,15 +439,43 @@ final class TheftProtectionService {
       let keyboard: TelegramKeyboard = AlarmAudioManager.shared.isPlaying ? .theftModeAlarmOn : .theftMode
       self.notificationService.send(
         message: prefix + info.formattedMessage,
-        keyboard: keyboard,
-        completion: nil
-      )
+        keyboard: keyboard
+      ) { [weak self] success in
+        guard let self = self, self.state == .theftMode else { return }
+        if success {
+          self.telegramSucceededInTheftMode = true
+          self.cancelOfflineSirenTimer()
+        } else {
+          self.scheduleOfflineSiren()
+        }
+      }
     }
   }
 
   private enum UpdateType {
     case initial
     case tracking
+  }
+
+  private func scheduleOfflineSiren() {
+    let settings = SettingsService.shared
+    guard settings.offlineSirenEnabled, settings.behaviorAlarm,
+          !telegramSucceededInTheftMode else { return }
+    guard offlineSirenTimer == nil else { return }
+    let timer = DispatchSource.makeTimerSource(queue: trackingQueue)
+    timer.schedule(deadline: .now() + 10)
+    timer.setEventHandler { [weak self] in
+      guard let self = self, self.state == .theftMode else { return }
+      DispatchQueue.main.async { AlarmAudioManager.shared.play() }
+      ActivityLog.logAsync(.theft, "Offline siren triggered (Telegram unreachable)")
+    }
+    offlineSirenTimer = timer
+    timer.resume()
+  }
+
+  private func cancelOfflineSirenTimer() {
+    offlineSirenTimer?.cancel()
+    offlineSirenTimer = nil
   }
 
   private func lockScreen() {
@@ -535,6 +577,8 @@ extension TheftProtectionService: PowerMonitorDelegate {
 // MARK: - DaemonIPCDelegate
 extension TheftProtectionService: DaemonIPCDelegate {
   func daemonDidConnect(_ client: DaemonIPCClient) {
+    TheftProtectionService.daemonConnected = true
+    NotificationCenter.default.post(name: .daemonConnectionChanged, object: nil)
     Logger.daemon.info("Connected to helper daemon")
     ActivityLog.logAsync(.system, "Helper daemon connected")
     // Re-sync state: if protection is active, re-send enables
@@ -551,6 +595,8 @@ extension TheftProtectionService: DaemonIPCDelegate {
   }
 
   func daemonDidDisconnect(_ client: DaemonIPCClient) {
+    TheftProtectionService.daemonConnected = false
+    NotificationCenter.default.post(name: .daemonConnectionChanged, object: nil)
     Logger.daemon.info("Disconnected from helper daemon")
     ActivityLog.logAsync(.system, "Helper daemon disconnected")
   }

@@ -52,6 +52,7 @@ struct SettingsView: View {
   @State private var behaviorAutoAlarm: Bool = false
   @State private var alarmVolume: Double = 100
   @State private var selectedAlarmSound: String = "Sosumi"
+  @State private var offlineSirenEnabled: Bool = false
 
   // Bluetooth
   @State private var bluetoothAutoArmEnabled: Bool = false
@@ -64,6 +65,7 @@ struct SettingsView: View {
   @State private var telegramChatId: String = ""
   @State private var telegramEnabled: Bool = true
 
+  @State private var isDaemonConnected = false
   @State private var selectedSection: SettingsSection? = .general
   @State private var showingResetConfirmation = false
   @Environment(\.dismiss) private var dismiss
@@ -105,7 +107,13 @@ struct SettingsView: View {
       }
     }
     .frame(width: 600, height: 460)
-    .onAppear(perform: loadSettings)
+    .onAppear {
+      loadSettings()
+      isDaemonConnected = TheftProtectionService.daemonConnected
+    }
+    .onReceive(NotificationCenter.default.publisher(for: .daemonConnectionChanged)) { _ in
+      isDaemonConnected = TheftProtectionService.daemonConnected
+    }
     .alert("Reset All Settings?", isPresented: $showingResetConfirmation) {
       Button("Cancel", role: .cancel) {}
       Button("Reset", role: .destructive) {
@@ -153,20 +161,51 @@ struct SettingsView: View {
           TextField("", text: $contactName)
             .textFieldStyle(.plain)
         }
+        .disabled(!isDaemonConnected || !behaviorLockScreen)
         LabeledContent("Phone") {
           TextField("", text: $contactPhone)
             .textFieldStyle(.plain)
         }
+        .disabled(!isDaemonConnected || !behaviorLockScreen)
         LabeledContent {
           Button("Retrieve from Contacts") {
             retrieveFromContacts()
           }
           .buttonStyle(.borderless)
+          .disabled(!isDaemonConnected || !behaviorLockScreen)
         } label: {
           EmptyView()
         }
+        if !isDaemonConnected || !behaviorLockScreen {
+          Text("Contact info is shown on lock screen overlay (requires Helper + lock screen enabled).")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        }
       } header: {
         Text("Contact Information")
+      }
+
+      Section {
+        HStack {
+          Image(systemName: isDaemonConnected ? "checkmark.circle.fill" : "xmark.circle")
+            .foregroundStyle(isDaemonConnected ? .green : .secondary)
+          Text(isDaemonConnected ? "Helper Connected" : "Helper Not Connected")
+        }
+        if !isDaemonConnected {
+          HStack {
+            Spacer()
+            Link("Install LidGuard Helper...",
+                 destination: URL(string: "https://github.com/Erel3/lidguard-helper/releases")!)
+              .font(.callout)
+            Spacer()
+          }
+        }
+      } header: {
+        Text("Helper Daemon")
+      } footer: {
+        Text("Required for power button detection, lock screen overlay, and pmset sleep prevention.")
+          .font(.footnote)
+          .foregroundStyle(.secondary)
       }
 
       Section {
@@ -238,10 +277,13 @@ struct SettingsView: View {
         Toggle("Lid close detection", isOn: $triggerLidClose)
         Toggle("Power disconnect detection", isOn: $triggerPowerDisconnect)
         Toggle("Power button detection", isOn: $triggerPowerButton)
+          .disabled(!isDaemonConnected)
       } header: {
         Text("Theft Mode Triggers")
       } footer: {
-        Text("Power button detection requires Accessibility permission.")
+        Text(isDaemonConnected
+          ? "Power button detection requires Accessibility permission."
+          : "Power button detection requires LidGuard Helper.")
           .font(.footnote)
           .foregroundStyle(.secondary)
       }
@@ -275,6 +317,17 @@ struct SettingsView: View {
       Section {
         Toggle("Shutdown blocking", isOn: $behaviorShutdownBlocking)
         Toggle("Lock screen message", isOn: $behaviorLockScreen)
+          .disabled(!isDaemonConnected)
+          .onChange(of: behaviorLockScreen) { _, newValue in
+            if newValue && isDaemonConnected {
+              requestContactsAndPopulate()
+            }
+          }
+        if !isDaemonConnected {
+          Text("Lock screen overlay requires LidGuard Helper.")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        }
       } header: {
         Text("Defense")
       }
@@ -303,9 +356,16 @@ struct SettingsView: View {
                 .frame(width: 40, alignment: .trailing)
             }
           }
+          Toggle("Siren when offline", isOn: $offlineSirenEnabled)
         }
       } header: {
         Text("Alarm")
+      } footer: {
+        if behaviorAlarm {
+          Text("Offline siren plays automatically when Telegram is unavailable during theft mode.")
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+        }
       }
     }
     .formStyle(.grouped)
@@ -405,6 +465,7 @@ struct SettingsView: View {
     behaviorShutdownBlocking = settings.behaviorShutdownBlocking
     behaviorLockScreen = settings.behaviorLockScreen
     behaviorAlarm = settings.behaviorAlarm
+    offlineSirenEnabled = settings.offlineSirenEnabled
     bluetoothAutoArmEnabled = settings.bluetoothAutoArmEnabled
     bluetoothArmGracePeriod = settings.bluetoothArmGracePeriod
     trustedBLEDevices = settings.trustedBLEDevices
@@ -429,6 +490,7 @@ struct SettingsView: View {
     settings.behaviorShutdownBlocking = behaviorShutdownBlocking
     settings.behaviorLockScreen = behaviorLockScreen
     settings.behaviorAlarm = behaviorAlarm
+    settings.offlineSirenEnabled = offlineSirenEnabled
 
     settings.bluetoothAutoArmEnabled = bluetoothAutoArmEnabled
     settings.bluetoothArmGracePeriod = bluetoothArmGracePeriod
@@ -465,6 +527,22 @@ struct SettingsView: View {
     UpdateService.shared.checkForUpdates(silent: false) {
       DispatchQueue.main.async {
         isCheckingForUpdates = false
+      }
+    }
+  }
+
+  private func requestContactsAndPopulate() {
+    settings.requestContactsAccess { granted in
+      if granted {
+        DispatchQueue.main.async {
+          if contactName.isEmpty {
+            let name = NSFullUserName()
+            if !name.isEmpty { contactName = name }
+          }
+          if contactPhone.isEmpty, let phone = getMyCardPhone() {
+            contactPhone = phone
+          }
+        }
       }
     }
   }
