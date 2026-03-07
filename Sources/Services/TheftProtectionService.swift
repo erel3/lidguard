@@ -589,6 +589,7 @@ extension TheftProtectionService: DaemonIPCDelegate {
     if TheftProtectionService.helperNeedsUpdate {
       Logger.daemon.warning("Helper daemon outdated (v\(version ?? "?"), requires v\(Config.Daemon.minHelperVersion))")
       ActivityLog.logAsync(.system, "Helper daemon needs update (v\(version ?? "?") < v\(Config.Daemon.minHelperVersion))")
+      HelperInstallService.shared.showUpdateWindow(currentVersion: version)
     }
     // Re-sync state: if protection is active, re-send enables
     if state == .enabled || state == .enabledBluetooth || state == .theftMode {

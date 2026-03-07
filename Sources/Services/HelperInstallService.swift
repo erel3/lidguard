@@ -7,6 +7,7 @@ final class HelperInstallService {
 
   private let installQueue = DispatchQueue(label: "com.lidguard.helper.install", qos: .utility)
   private var isInstalling = false
+  private var updateWindow: NSWindow?
 
   private var installDir: URL {
     FileManager.default.homeDirectoryForCurrentUser
@@ -23,6 +24,75 @@ final class HelperInstallService {
   }
 
   private init() {}
+
+  // MARK: - Update Window
+
+  func showUpdateWindow(currentVersion: String?) {
+    DispatchQueue.main.async { [self] in
+      if let existing = updateWindow, existing.isVisible {
+        existing.makeKeyAndOrderFront(nil)
+        return
+      }
+
+      let view = HelperUpdateView(
+        currentVersion: currentVersion ?? "unknown",
+        requiredVersion: Config.Daemon.minHelperVersion,
+        isInstalling: false,
+        onInstall: { [weak self] in self?.handleInstall() },
+        onDismiss: { [weak self] in self?.updateWindow?.close() }
+      )
+
+      let window = NSPanel(
+        contentRect: NSRect(x: 0, y: 0, width: 400, height: 240),
+        styleMask: [.titled, .closable, .nonactivatingPanel, .hudWindow],
+        backing: .buffered,
+        defer: false
+      )
+      window.title = "Helper Update"
+      window.contentView = NSHostingView(rootView: view)
+      window.center()
+      window.isReleasedWhenClosed = false
+      window.level = .floating
+      window.hidesOnDeactivate = false
+      window.makeKeyAndOrderFront(nil)
+      NSApp.activate(ignoringOtherApps: true)
+
+      updateWindow = window
+    }
+  }
+
+  private func handleInstall() {
+    #if APPSTORE
+    if let url = URL(string: Config.Daemon.helperBrowserURL) {
+      NSWorkspace.shared.open(url)
+    }
+    updateWindow?.close()
+    #else
+    // Show progress state
+    let progressView = HelperUpdateView(
+      currentVersion: TheftProtectionService.daemonVersion ?? "unknown",
+      requiredVersion: Config.Daemon.minHelperVersion,
+      isInstalling: true,
+      onInstall: {},
+      onDismiss: {}
+    )
+    updateWindow?.contentView = NSHostingView(rootView: progressView)
+
+    autoInstall { [weak self] success in
+      DispatchQueue.main.async {
+        self?.updateWindow?.close()
+        if !success {
+          let alert = NSAlert()
+          alert.messageText = "Helper Update Failed"
+          alert.informativeText = "Could not update the helper daemon. Check the activity log for details."
+          alert.alertStyle = .warning
+          alert.addButton(withTitle: "OK")
+          alert.runModal()
+        }
+      }
+    }
+    #endif
+  }
 
   // MARK: - Direct Edition (Auto-Install)
 
@@ -288,6 +358,78 @@ private struct GitHubAsset: Decodable {
   }
 }
 #endif
+
+// MARK: - Helper Update View
+
+private struct HelperUpdateView: View {
+  let currentVersion: String
+  let requiredVersion: String
+  var isInstalling: Bool = false
+  let onInstall: () -> Void
+  let onDismiss: () -> Void
+
+  var body: some View {
+    VStack(spacing: 16) {
+      VStack(spacing: 8) {
+        Image(systemName: "arrow.triangle.2.circlepath")
+          .font(.system(size: 40))
+          .foregroundStyle(.orange)
+
+        Text("Helper Update Required")
+          .font(.headline)
+
+        Text("Installed: v\(currentVersion) — Required: v\(requiredVersion)")
+          .font(.subheadline)
+          .foregroundStyle(.secondary)
+      }
+
+      Text("LidGuard requires a newer version of the helper daemon for full functionality. Some features may not work until the helper is updated.")
+        .multilineTextAlignment(.center)
+        .foregroundStyle(.secondary)
+        .padding(.horizontal)
+
+      Spacer()
+
+      if isInstalling {
+        HStack(spacing: 8) {
+          ProgressView()
+            .controlSize(.small)
+          Text("Updating helper...")
+            .foregroundStyle(.secondary)
+        }
+        .padding(.bottom, 4)
+      } else {
+        HStack(spacing: 12) {
+          Button("Not Now") { onDismiss() }
+            .keyboardShortcut(.cancelAction)
+
+          #if APPSTORE
+          if #available(macOS 26.0, *) {
+            Button("Download Helper") { onInstall() }
+              .keyboardShortcut(.defaultAction)
+              .buttonStyle(.glassProminent)
+          } else {
+            Button("Download Helper") { onInstall() }
+              .keyboardShortcut(.defaultAction)
+          }
+          #else
+          if #available(macOS 26.0, *) {
+            Button("Update Helper") { onInstall() }
+              .keyboardShortcut(.defaultAction)
+              .buttonStyle(.glassProminent)
+          } else {
+            Button("Update Helper") { onInstall() }
+              .keyboardShortcut(.defaultAction)
+          }
+          #endif
+        }
+        .padding(.bottom, 4)
+      }
+    }
+    .padding(20)
+    .frame(width: 400, height: 240)
+  }
+}
 
 // MARK: - App Store Install Instructions View
 
