@@ -37,6 +37,7 @@ final class TheftProtectionService {
   private let commandService: TelegramCommandService
   private let sleepWakeService: SleepWakeService
   private let powerMonitor: PowerMonitorService
+  private let daemonClient: DaemonIPC
   private let globalShortcutService = GlobalShortcutService()
   private let bluetoothProximityService = BluetoothProximityService()
 
@@ -55,7 +56,8 @@ final class TheftProtectionService {
        lidMonitor: LidMonitorService = LidMonitorService(),
        commandService: TelegramCommandService = TelegramCommandService(),
        sleepWakeService: SleepWakeService = SleepWakeService(),
-       powerMonitor: PowerMonitorService = PowerMonitorService()) {
+       powerMonitor: PowerMonitorService = PowerMonitorService(),
+       daemonClient: DaemonIPC = DaemonIPCClient()) {
     self.notificationService = notificationService
     self.deviceInfoCollector = deviceInfoCollector
     self.sleepPrevention = sleepPrevention
@@ -63,6 +65,7 @@ final class TheftProtectionService {
     self.commandService = commandService
     self.sleepWakeService = sleepWakeService
     self.powerMonitor = powerMonitor
+    self.daemonClient = daemonClient
 
     self.lidMonitor.delegate = self
     self.commandService.delegate = self
@@ -70,6 +73,9 @@ final class TheftProtectionService {
     self.powerMonitor.delegate = self
     self.globalShortcutService.delegate = self
     self.bluetoothProximityService.delegate = self
+    if let client = daemonClient as? DaemonIPCClient {
+      client.delegate = self
+    }
 
     NotificationCenter.default.addObserver(
       forName: .shortcutSettingsChanged, object: nil, queue: .main
@@ -104,6 +110,10 @@ final class TheftProtectionService {
     powerMonitor.stop()
     globalShortcutService.stop()
     bluetoothProximityService.stop()
+    daemonClient.disablePmset()
+    daemonClient.disablePowerButton()
+    daemonClient.hideLockScreen()
+    daemonClient.disconnect()
   }
 
   private func activeTriggerNames() -> [String] {
@@ -134,6 +144,11 @@ final class TheftProtectionService {
     }
     if settings.triggerLidClose { lidMonitor.start() }
     if settings.triggerPowerDisconnect { powerMonitor.start() }
+
+    // Daemon features
+    daemonClient.connect()
+    if settings.behaviorSleepPrevention { daemonClient.enablePmset() }
+    if settings.triggerPowerButton { daemonClient.enablePowerButton() }
   }
 
   func enableProtection(notify: Bool = true, lockScreen: Bool = false) {
@@ -204,6 +219,10 @@ final class TheftProtectionService {
     lidMonitor.stop()
     powerMonitor.stop()
     sleepPrevention.disable()
+    daemonClient.disablePmset()
+    daemonClient.disablePowerButton()
+    daemonClient.hideLockScreen()
+    daemonClient.disconnect()
     Logger.theft.info("Protection disabled")
 
     let method = remote ? "Telegram" : "Touch ID"
@@ -236,9 +255,13 @@ final class TheftProtectionService {
     Logger.theft.warning("THEFT MODE ACTIVATED - \(trigger.description)")
     ActivityLog.logAsync(.theft, "THEFT MODE ACTIVATED - \(trigger.description)")
 
-    // Lock screen
-    if SettingsService.shared.behaviorLockScreen {
+    // Lock screen + daemon overlay
+    let settings = SettingsService.shared
+    if settings.behaviorLockScreen {
       lockScreen()
+      let name = settings.contactName ?? ""
+      let phone = settings.contactPhone ?? ""
+      daemonClient.showLockScreen(contactName: name, contactPhone: phone, message: "STOLEN DEVICE")
     }
 
     // Auto-play alarm if enabled
@@ -262,6 +285,7 @@ final class TheftProtectionService {
     updateCount = 0
     currentTrigger = nil
     AlarmAudioManager.shared.stop()
+    daemonClient.hideLockScreen()
     Logger.theft.info("Theft mode deactivated")
 
     let method = remote ? "Telegram" : "Touch ID"
@@ -505,6 +529,37 @@ extension TheftProtectionService: PowerMonitorDelegate {
     guard SettingsService.shared.triggerPowerDisconnect else { return }
     ActivityLog.logAsync(.trigger, "Power disconnected detected")
     activateTheftMode(trigger: .powerDisconnected)
+  }
+}
+
+// MARK: - DaemonIPCDelegate
+extension TheftProtectionService: DaemonIPCDelegate {
+  func daemonDidConnect(_ client: DaemonIPCClient) {
+    Logger.daemon.info("Connected to helper daemon")
+    ActivityLog.logAsync(.system, "Helper daemon connected")
+    // Re-sync state: if protection is active, re-send enables
+    if state == .enabled || state == .enabledBluetooth || state == .theftMode {
+      let settings = SettingsService.shared
+      if settings.behaviorSleepPrevention { client.enablePmset() }
+      if settings.triggerPowerButton { client.enablePowerButton() }
+      if state == .theftMode && settings.behaviorLockScreen {
+        let name = settings.contactName ?? ""
+        let phone = settings.contactPhone ?? ""
+        client.showLockScreen(contactName: name, contactPhone: phone, message: "STOLEN DEVICE")
+      }
+    }
+  }
+
+  func daemonDidDisconnect(_ client: DaemonIPCClient) {
+    Logger.daemon.info("Disconnected from helper daemon")
+    ActivityLog.logAsync(.system, "Helper daemon disconnected")
+  }
+
+  func daemonDidReceivePowerButtonPress(_ client: DaemonIPCClient) {
+    guard state != .disabled else { return }
+    guard SettingsService.shared.triggerPowerButton else { return }
+    ActivityLog.logAsync(.trigger, "Power button pressed detected")
+    sendShutdownAlert(blocked: false)
   }
 }
 

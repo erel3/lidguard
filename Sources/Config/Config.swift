@@ -11,6 +11,7 @@ extension Logger {
   static let power = Logger(subsystem: Config.App.bundleIdentifier, category: "power")
   static let update = Logger(subsystem: Config.App.bundleIdentifier, category: "update")
   static let bluetooth = Logger(subsystem: Config.App.bundleIdentifier, category: "bluetooth")
+  static let daemon = Logger(subsystem: Config.App.bundleIdentifier, category: "daemon")
 }
 
 enum Config {
@@ -37,6 +38,14 @@ enum Config {
     static let defaultArmGracePeriod: TimeInterval = 120
     static let rssiHysteresis: Int = 5
     static let btRecoveryCooldown: TimeInterval = 15
+  }
+
+  enum Daemon {
+    static let host = "127.0.0.1"
+    static let port: UInt16 = 51423
+    static let secretPath = "Library/Application Support/LidGuard/.ipc-secret"
+    static let reconnectBaseDelay: TimeInterval = 2
+    static let reconnectMaxDelay: TimeInterval = 30
   }
 
   enum App {
