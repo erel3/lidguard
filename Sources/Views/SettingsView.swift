@@ -46,7 +46,6 @@ struct SettingsView: View {
 
   // Protection
   @State private var behaviorSleepPrevention: Bool = true
-  @State private var sleepPreventionInstalled: Bool = false
   @State private var behaviorShutdownBlocking: Bool = true
   @State private var behaviorLockScreen: Bool = true
   @State private var behaviorAlarm: Bool = true
@@ -77,7 +76,6 @@ struct SettingsView: View {
   ]
 
   private let settings = SettingsService.shared
-  private let pmset = PmsetService.shared
   private let loginItem = LoginItemService.shared
 
   var body: some View {
@@ -270,19 +268,6 @@ struct SettingsView: View {
     Form {
       Section {
         Toggle("Sleep prevention (IOPMAssertion)", isOn: $behaviorSleepPrevention)
-        LabeledContent("Sleep Prevention (pmset)") {
-          if #available(macOS 26.0, *) {
-            Button(sleepPreventionInstalled ? "Uninstall" : "Install") {
-              toggleSleepPrevention()
-            }
-            .buttonStyle(.glass)
-          } else {
-            Button(sleepPreventionInstalled ? "Uninstall" : "Install") {
-              toggleSleepPrevention()
-            }
-            .buttonStyle(.borderless)
-          }
-        }
       } header: {
         Text("Sleep")
       }
@@ -409,7 +394,6 @@ struct SettingsView: View {
     telegramEnabled = settings.telegramEnabled
     startAtLogin = loginItem.isEnabled
     autoUpdateEnabled = settings.autoUpdateEnabled
-    sleepPreventionInstalled = pmset.isInstalled()
     selectedAlarmSound = settings.alarmSound
     behaviorAutoAlarm = settings.behaviorAutoAlarm
     alarmVolume = Double(settings.alarmVolume)
@@ -466,15 +450,6 @@ struct SettingsView: View {
     settings.resetAll()
     loadSettings()
     ActivityLog.logAsync(.system, "All settings reset")
-  }
-
-  private func toggleSleepPrevention() {
-    if sleepPreventionInstalled {
-      _ = pmset.uninstall()
-    } else {
-      _ = pmset.install()
-    }
-    sleepPreventionInstalled = pmset.isInstalled()
   }
 
   private func toggleLoginItem(_ enable: Bool) {

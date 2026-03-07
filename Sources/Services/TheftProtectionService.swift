@@ -37,10 +37,8 @@ final class TheftProtectionService {
   private let commandService: TelegramCommandService
   private let sleepWakeService: SleepWakeService
   private let powerMonitor: PowerMonitorService
-  private let powerButtonMonitor = PowerButtonMonitor()
   private let globalShortcutService = GlobalShortcutService()
   private let bluetoothProximityService = BluetoothProximityService()
-  private let pmsetService = PmsetService.shared
 
   private var lastManualDisarmTime: Date?
   private var trackingTimer: DispatchSourceTimer?
@@ -70,7 +68,6 @@ final class TheftProtectionService {
     self.commandService.delegate = self
     self.sleepWakeService.delegate = self
     self.powerMonitor.delegate = self
-    self.powerButtonMonitor.delegate = self
     self.globalShortcutService.delegate = self
     self.bluetoothProximityService.delegate = self
 
@@ -105,7 +102,6 @@ final class TheftProtectionService {
 
   func shutdown() {
     powerMonitor.stop()
-    pmsetService.disable()
     globalShortcutService.stop()
     bluetoothProximityService.stop()
   }
@@ -135,11 +131,9 @@ final class TheftProtectionService {
     let settings = SettingsService.shared
     if settings.behaviorSleepPrevention {
       sleepPrevention.enable()
-      pmsetService.enable()
     }
     if settings.triggerLidClose { lidMonitor.start() }
     if settings.triggerPowerDisconnect { powerMonitor.start() }
-    if settings.triggerPowerButton { powerButtonMonitor.start() }
   }
 
   func enableProtection(notify: Bool = true, lockScreen: Bool = false) {
@@ -209,9 +203,7 @@ final class TheftProtectionService {
     }
     lidMonitor.stop()
     powerMonitor.stop()
-    powerButtonMonitor.stop()
     sleepPrevention.disable()
-    pmsetService.disable()
     Logger.theft.info("Protection disabled")
 
     let method = remote ? "Telegram" : "Touch ID"
@@ -244,15 +236,9 @@ final class TheftProtectionService {
     Logger.theft.warning("THEFT MODE ACTIVATED - \(trigger.description)")
     ActivityLog.logAsync(.theft, "THEFT MODE ACTIVATED - \(trigger.description)")
 
-    // Lock screen and show message
+    // Lock screen
     if SettingsService.shared.behaviorLockScreen {
       lockScreen()
-      LockScreenMessageService.shared.show(
-        message: "STOLEN DEVICE",
-        onUnlock: { [weak self] in
-          self?.deactivateTheftMode()
-        }
-      )
     }
 
     // Auto-play alarm if enabled
@@ -276,7 +262,6 @@ final class TheftProtectionService {
     updateCount = 0
     currentTrigger = nil
     AlarmAudioManager.shared.stop()
-    LockScreenMessageService.shared.hide()
     Logger.theft.info("Theft mode deactivated")
 
     let method = remote ? "Telegram" : "Touch ID"
@@ -520,16 +505,6 @@ extension TheftProtectionService: PowerMonitorDelegate {
     guard SettingsService.shared.triggerPowerDisconnect else { return }
     ActivityLog.logAsync(.trigger, "Power disconnected detected")
     activateTheftMode(trigger: .powerDisconnected)
-  }
-}
-
-// MARK: - PowerButtonDelegate
-extension TheftProtectionService: PowerButtonDelegate {
-  func powerButtonPressed() {
-    guard state != .disabled else { return }
-    guard SettingsService.shared.triggerPowerButton else { return }
-    ActivityLog.logAsync(.trigger, "Power button pressed detected")
-    sendShutdownAlert(blocked: false)
   }
 }
 

@@ -12,7 +12,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
   private let theftProtection = TheftProtectionService()
   private let authService = BiometricAuthService()
-  private let pmsetService = PmsetService.shared
   private var allowQuit = false
 
   func allowQuitForUpdate() {
