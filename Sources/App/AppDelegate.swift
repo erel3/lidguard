@@ -34,8 +34,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // Start with no Dock icon (protection disabled)
     NSApp.setActivationPolicy(.accessory)
 
-    // Show settings on first launch if not configured
+    // First launch: unregister stale login item, show settings
     if !SettingsService.shared.isConfigured() {
+      _ = LoginItemService.shared.disable()
       DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
         self.showSettings()
       }

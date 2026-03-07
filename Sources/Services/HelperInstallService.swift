@@ -185,6 +185,11 @@ final class HelperInstallService {
         // Install LaunchAgent plist
         installLaunchAgent()
 
+        // Install sudoers for passwordless pmset
+        if SettingsService.shared.behaviorSleepPrevention {
+          installSudoers()
+        }
+
         // Load daemon
         loadDaemon()
 
@@ -267,6 +272,71 @@ final class HelperInstallService {
     try? FileManager.default.createDirectory(at: launchAgentsDir, withIntermediateDirectories: true)
 
     try? plistData?.write(to: plistDst)
+  }
+
+  func removeSudoers() {
+    installQueue.async {
+      let process = Process()
+      process.executableURL = URL(fileURLWithPath: "/usr/bin/sudo")
+      process.arguments = ["rm", "-f", "/etc/sudoers.d/lidguard"]
+      process.standardOutput = FileHandle.nullDevice
+      process.standardError = FileHandle.nullDevice
+      try? process.run()
+      process.waitUntilExit()
+      if process.terminationStatus == 0 {
+        Logger.daemon.info("Sudoers file removed")
+        ActivityLog.logAsync(.system, "Sudoers file removed")
+      }
+    }
+  }
+
+  private func installSudoers() {
+    let username = NSUserName()
+    let rules = """
+    \(username) ALL = NOPASSWD: /usr/bin/pmset -a disablesleep 1
+    \(username) ALL = NOPASSWD: /usr/bin/pmset -a disablesleep 0
+    """
+
+    let tempFile = FileManager.default.temporaryDirectory
+      .appendingPathComponent("lidguard-sudoers-\(UUID().uuidString)")
+    do {
+      try rules.write(to: tempFile, atomically: true, encoding: .utf8)
+      try FileManager.default.setAttributes([.posixPermissions: 0o440], ofItemAtPath: tempFile.path)
+    } catch {
+      Logger.daemon.error("Failed to write sudoers temp file: \(error.localizedDescription)")
+      return
+    }
+    defer { try? FileManager.default.removeItem(at: tempFile) }
+
+    // visudo --check validates the file, then sudo cp installs it
+    let check = Process()
+    check.executableURL = URL(fileURLWithPath: "/usr/sbin/visudo")
+    check.arguments = ["--check", "--file", tempFile.path]
+    check.standardOutput = FileHandle.nullDevice
+    check.standardError = FileHandle.nullDevice
+    try? check.run()
+    check.waitUntilExit()
+
+    guard check.terminationStatus == 0 else {
+      Logger.daemon.error("Sudoers validation failed")
+      return
+    }
+
+    let install = Process()
+    install.executableURL = URL(fileURLWithPath: "/usr/bin/sudo")
+    install.arguments = ["cp", tempFile.path, "/etc/sudoers.d/lidguard"]
+    install.standardOutput = FileHandle.nullDevice
+    install.standardError = FileHandle.nullDevice
+    try? install.run()
+    install.waitUntilExit()
+
+    if install.terminationStatus == 0 {
+      Logger.daemon.info("Sudoers file installed")
+      ActivityLog.logAsync(.system, "Sudoers file installed for pmset")
+    } else {
+      Logger.daemon.error("Failed to install sudoers file")
+      ActivityLog.logAsync(.system, "Failed to install sudoers file (sudo required)")
+    }
   }
 
   private func unloadDaemon() {

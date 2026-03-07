@@ -99,6 +99,12 @@ final class TheftProtectionService {
       }
       self?.globalShortcutService.restart()
     }
+
+    NotificationCenter.default.addObserver(
+      forName: .helperInstallCompleted, object: nil, queue: .main
+    ) { [weak self] _ in
+      self?.daemonClient.reconnectNow()
+    }
   }
 
   func start() {

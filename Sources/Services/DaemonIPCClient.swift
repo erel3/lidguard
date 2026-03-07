@@ -12,6 +12,7 @@ protocol DaemonIPC: AnyObject {
   var delegate: DaemonIPCDelegate? { get set }
   var isConnected: Bool { get }
   func connect()
+  func reconnectNow()
   func disconnect()
   func enablePmset()
   func disablePmset()
@@ -50,6 +51,16 @@ final class DaemonIPCClient: DaemonIPC {
   func connect() {
     queue.async { [self] in
       guard state == .disconnected else { return }
+      shouldReconnect = true
+      startConnection()
+    }
+  }
+
+  func reconnectNow() {
+    queue.async { [self] in
+      cancelReconnect()
+      tearDown()
+      reconnectDelay = Config.Daemon.reconnectBaseDelay
       shouldReconnect = true
       startConnection()
     }

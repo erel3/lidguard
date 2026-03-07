@@ -170,32 +170,35 @@ struct SettingsView: View {
   private var generalTab: some View {
     Form {
       Section {
-        LabeledContent("Name") {
-          TextField("", text: $contactName)
-            .textFieldStyle(.plain)
-        }
-        .disabled(!isDaemonConnected || !behaviorLockScreen)
-        LabeledContent("Phone") {
-          TextField("", text: $contactPhone)
-            .textFieldStyle(.plain)
-        }
-        .disabled(!isDaemonConnected || !behaviorLockScreen)
-        LabeledContent {
-          Button("Retrieve from Contacts") {
-            retrieveFromContacts()
+        Toggle("Start at Login", isOn: $startAtLogin)
+          .onChange(of: startAtLogin) { _, newValue in
+            toggleLoginItem(newValue)
           }
-          .buttonStyle(.borderless)
-          .disabled(!isDaemonConnected || !behaviorLockScreen)
-        } label: {
-          EmptyView()
-        }
-        if !isDaemonConnected || !behaviorLockScreen {
-          Text("Contact info is shown on lock screen overlay (requires Helper + lock screen enabled).")
-            .font(.caption)
-            .foregroundStyle(.secondary)
+      } header: {
+        Text("Launch")
+      }
+
+      Section {
+        Toggle("Automatically check for updates", isOn: $autoUpdateEnabled)
+        HStack {
+          Spacer()
+          if #available(macOS 26.0, *) {
+            Button(isCheckingForUpdates ? "Checking..." : "Check for Updates") {
+              checkForUpdates()
+            }
+            .buttonStyle(.glass)
+            .disabled(isCheckingForUpdates)
+          } else {
+            Button(isCheckingForUpdates ? "Checking..." : "Check for Updates") {
+              checkForUpdates()
+            }
+            .buttonStyle(.borderless)
+            .disabled(isCheckingForUpdates)
+          }
+          Spacer()
         }
       } header: {
-        Text("Contact Information")
+        Text("Updates")
       }
 
       Section {
@@ -261,36 +264,6 @@ struct SettingsView: View {
       }
 
       Section {
-        Toggle("Start at Login", isOn: $startAtLogin)
-          .onChange(of: startAtLogin) { _, newValue in
-            toggleLoginItem(newValue)
-          }
-      }
-
-      Section {
-        Toggle("Automatically check for updates", isOn: $autoUpdateEnabled)
-        HStack {
-          Spacer()
-          if #available(macOS 26.0, *) {
-            Button(isCheckingForUpdates ? "Checking..." : "Check for Updates") {
-              checkForUpdates()
-            }
-            .buttonStyle(.glass)
-            .disabled(isCheckingForUpdates)
-          } else {
-            Button(isCheckingForUpdates ? "Checking..." : "Check for Updates") {
-              checkForUpdates()
-            }
-            .buttonStyle(.borderless)
-            .disabled(isCheckingForUpdates)
-          }
-          Spacer()
-        }
-      } header: {
-        Text("Updates")
-      }
-
-      Section {
         HStack {
           Spacer()
           if #available(macOS 26.0, *) {
@@ -330,21 +303,19 @@ struct SettingsView: View {
         Toggle("Power disconnect detection", isOn: $triggerPowerDisconnect)
         Toggle("Power button detection", isOn: $triggerPowerButton)
           .disabled(!isDaemonConnected)
+          .if(!isDaemonConnected) { $0.overlay(helperRequiredBadge, alignment: .trailing) }
       } header: {
         Text("Theft Mode Triggers")
       } footer: {
         Text(isDaemonConnected
-          ? "Power button detection requires Accessibility permission."
+          ? "Power button detection requires Accessibility permission for the Helper."
           : "Power button detection requires LidGuard Helper.")
           .font(.footnote)
           .foregroundStyle(.secondary)
       }
 
       Section {
-        Toggle("Enable global shortcut", isOn: $shortcutEnabled)
-        if shortcutEnabled {
-          KeyboardShortcuts.Recorder("Shortcut", name: .toggleProtection)
-        }
+        KeyboardShortcuts.Recorder("Shortcut", name: .toggleProtection)
       } header: {
         Text("Global Keyboard Shortcut")
       } footer: {
@@ -370,54 +341,63 @@ struct SettingsView: View {
         Toggle("Shutdown blocking", isOn: $behaviorShutdownBlocking)
         Toggle("Lock screen message", isOn: $behaviorLockScreen)
           .disabled(!isDaemonConnected)
+          .if(!isDaemonConnected) { $0.overlay(helperRequiredBadge, alignment: .trailing) }
           .onChange(of: behaviorLockScreen) { _, newValue in
             if newValue && isDaemonConnected {
               requestContactsAndPopulate()
             }
           }
-        if !isDaemonConnected {
-          Text("Lock screen overlay requires LidGuard Helper.")
-            .font(.caption)
-            .foregroundStyle(.secondary)
+        if behaviorLockScreen {
+          LabeledContent("Name") {
+            TextField("", text: $contactName)
+              .textFieldStyle(.plain)
+          }
+          LabeledContent("Phone") {
+            TextField("", text: $contactPhone)
+              .textFieldStyle(.plain)
+          }
+          LabeledContent {
+            Button("Retrieve from Contacts") {
+              retrieveFromContacts()
+            }
+            .buttonStyle(.borderless)
+          } label: {
+            EmptyView()
+          }
         }
       } header: {
         Text("Defense")
       }
 
       Section {
-        Toggle("Alarm enabled", isOn: $behaviorAlarm)
-        if behaviorAlarm {
-          Toggle("Auto-play on theft mode", isOn: $behaviorAutoAlarm)
-          Picker("Alarm Sound", selection: $selectedAlarmSound) {
-            ForEach(alarmSounds, id: \.self) { sound in
-              Text(sound).tag(sound)
-            }
+        Toggle("Auto-play on theft mode", isOn: $behaviorAutoAlarm)
+        Picker("Sound", selection: $selectedAlarmSound) {
+          ForEach(alarmSounds, id: \.self) { sound in
+            Text(sound).tag(sound)
           }
-          .onChange(of: selectedAlarmSound) { _, newValue in
-            if newValue == "Siren" {
-              AlarmAudioManager.shared.previewSiren()
-            } else {
-              NSSound(named: newValue)?.play()
-            }
-          }
-          LabeledContent("Volume") {
-            HStack {
-              Slider(value: $alarmVolume, in: 10...100, step: 10)
-              Text("\(Int(alarmVolume))%")
-                .monospacedDigit()
-                .frame(width: 40, alignment: .trailing)
-            }
-          }
-          Toggle("Siren when offline", isOn: $offlineSirenEnabled)
         }
+        .onChange(of: selectedAlarmSound) { _, newValue in
+          if newValue == "Siren" {
+            AlarmAudioManager.shared.previewSiren()
+          } else {
+            NSSound(named: newValue)?.play()
+          }
+        }
+        LabeledContent("Volume") {
+          HStack {
+            Slider(value: $alarmVolume, in: 10...100, step: 10)
+            Text("\(Int(alarmVolume))%")
+              .monospacedDigit()
+              .frame(width: 40, alignment: .trailing)
+          }
+        }
+        Toggle("Siren when offline", isOn: $offlineSirenEnabled)
       } header: {
         Text("Alarm")
       } footer: {
-        if behaviorAlarm {
-          Text("Offline siren plays automatically when Telegram is unavailable during theft mode.")
-            .font(.footnote)
-            .foregroundStyle(.secondary)
-        }
+        Text("Alarm can be triggered via Telegram or keyboard shortcut. Offline siren plays automatically when Telegram is unavailable.")
+          .font(.footnote)
+          .foregroundStyle(.secondary)
       }
     }
     .formStyle(.grouped)
@@ -479,17 +459,25 @@ struct SettingsView: View {
   private var notificationsTab: some View {
     Form {
       Section {
-        LabeledContent("Bot Token") {
-          SecureField("", text: $telegramBotToken)
-            .textFieldStyle(.plain)
+        Toggle("Enable Telegram notifications", isOn: $telegramEnabled)
+        if telegramEnabled {
+          LabeledContent("Bot Token") {
+            SecureField("", text: $telegramBotToken)
+              .textFieldStyle(.plain)
+          }
+          LabeledContent("Chat ID") {
+            TextField("", text: $telegramChatId)
+              .textFieldStyle(.plain)
+          }
         }
-        LabeledContent("Chat ID") {
-          TextField("", text: $telegramChatId)
-            .textFieldStyle(.plain)
-        }
-        Toggle("Enable notifications", isOn: $telegramEnabled)
       } header: {
         Text("Telegram")
+      } footer: {
+        if !telegramEnabled {
+          Text("Telegram notifications are disabled. The app will still protect your device locally (alarm, lock screen).")
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+        }
       }
 
     }
@@ -555,6 +543,10 @@ struct SettingsView: View {
       UpdateService.shared.startPeriodicChecks()
     } else {
       UpdateService.shared.stopPeriodicChecks()
+    }
+
+    if !settings.setupComplete {
+      settings.setupComplete = true
     }
 
     ActivityLog.logAsync(.system, "Settings saved")
@@ -627,5 +619,25 @@ struct SettingsView: View {
     }
     let mobile = me.phoneNumbers.first { $0.label == CNLabelPhoneNumberMobile }
     return mobile?.value.stringValue ?? me.phoneNumbers.first?.value.stringValue
+  }
+
+  private var helperRequiredBadge: some View {
+    Label("Requires Helper", systemImage: "exclamationmark.triangle.fill")
+      .font(.caption2)
+      .foregroundStyle(.orange)
+      .padding(.trailing, 4)
+  }
+}
+
+// MARK: - Conditional Modifier
+
+extension View {
+  @ViewBuilder
+  func `if`<Content: View>(_ condition: Bool, transform: (Self) -> Content) -> some View {
+    if condition {
+      transform(self)
+    } else {
+      self
+    }
   }
 }

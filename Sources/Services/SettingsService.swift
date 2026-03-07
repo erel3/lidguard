@@ -43,6 +43,9 @@ final class SettingsService {
     static let skippedVersion = "lidguard.skippedVersion"
     #endif
 
+    // Setup
+    static let setupComplete = "lidguard.setupComplete"
+
     // Bluetooth Shortcut
     static let btShortcutEnabled = "lidguard.btShortcutEnabled"
 
@@ -62,12 +65,12 @@ final class SettingsService {
   // MARK: - Contact Info (UserDefaults)
 
   var contactName: String? {
-    get { defaults.string(forKey: Keys.contactName) ?? macOSOwnerName }
+    get { defaults.string(forKey: Keys.contactName) }
     set { defaults.set(newValue, forKey: Keys.contactName) }
   }
 
   var contactPhone: String? {
-    get { defaults.string(forKey: Keys.contactPhone) ?? myCardPhone }
+    get { defaults.string(forKey: Keys.contactPhone) }
     set { defaults.set(newValue, forKey: Keys.contactPhone) }
   }
 
@@ -103,7 +106,7 @@ final class SettingsService {
   }
 
   var telegramEnabled: Bool {
-    get { defaults.object(forKey: Keys.telegramEnabled) as? Bool ?? true }
+    get { defaults.object(forKey: Keys.telegramEnabled) as? Bool ?? false }
     set { defaults.set(newValue, forKey: Keys.telegramEnabled) }
   }
 
@@ -155,7 +158,7 @@ final class SettingsService {
   }
 
   var behaviorLockScreen: Bool {
-    get { defaults.object(forKey: Keys.behaviorLockScreen) as? Bool ?? true }
+    get { defaults.object(forKey: Keys.behaviorLockScreen) as? Bool ?? false }
     set { defaults.set(newValue, forKey: Keys.behaviorLockScreen) }
   }
 
@@ -236,10 +239,15 @@ final class SettingsService {
     !trustedBLEDevices.isEmpty
   }
 
-  // MARK: - Configuration Status
+  // MARK: - Setup
+
+  var setupComplete: Bool {
+    get { defaults.bool(forKey: Keys.setupComplete) }
+    set { defaults.set(newValue, forKey: Keys.setupComplete) }
+  }
 
   func isConfigured() -> Bool {
-    isTelegramConfigured
+    setupComplete
   }
 
   // MARK: - Reset
@@ -261,6 +269,7 @@ final class SettingsService {
     defaults.removeObject(forKey: Keys.behaviorAutoAlarm)
     defaults.removeObject(forKey: Keys.alarmVolume)
     defaults.removeObject(forKey: Keys.offlineSirenEnabled)
+    defaults.removeObject(forKey: Keys.setupComplete)
     defaults.removeObject(forKey: Keys.autoUpdateEnabled)
     defaults.removeObject(forKey: Keys.lastUpdateCheckDate)
     #if !APPSTORE
