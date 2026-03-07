@@ -7,7 +7,7 @@ CODESIGN_ID ?= Developer ID Application: Andrey Kim (73R36N2A46)
 CODESIGN_REQ ?= designated => anchor apple generic and certificate leaf[subject.OU] = "73R36N2A46"
 NOTARIZE_PROFILE ?= Notarize
 
-.PHONY: build build-appstore run run-debug install release clean version icon lint
+.PHONY: build build-appstore run run-appstore run-debug install release clean version icon lint
 
 VERSION := $(shell cat $(VERSION_FILE) 2>/dev/null || echo "1.0.0")
 
@@ -20,6 +20,11 @@ build-appstore:
 # Dev: bundle with -dev suffix and open
 run: build
 	@$(MAKE) _bundle SUFFIX=-dev
+	open $(BUNDLE)
+
+# Dev: bundle App Store edition with -dev suffix and open
+run-appstore: build-appstore
+	@$(MAKE) _bundle SUFFIX=-dev ENTITLEMENTS=LidGuard-AppStore.entitlements
 	open $(BUNDLE)
 
 # Debug: build debug binary and run directly (no .app bundle)
@@ -56,7 +61,8 @@ release:
 	rm -f RELEASE_NOTES.md && \
 	echo "Released v$$VERSION"
 
-# Internal: create .app bundle with optional SUFFIX (-dev or empty)
+# Internal: create .app bundle with optional SUFFIX (-dev or empty) and ENTITLEMENTS
+ENTITLEMENTS ?= LidGuard.entitlements
 _bundle:
 	@VERSION=$$(cat $(VERSION_FILE))$(SUFFIX); \
 	echo "Bundling $(APP_NAME) v$$VERSION"; \
@@ -69,7 +75,7 @@ _bundle:
 	cp Resources/AppIcon.icns $(BUNDLE)/Contents/Resources/ 2>/dev/null || true; \
 	cp -r $(BUILD_DIR)/*.bundle $(BUNDLE)/Contents/Resources/ 2>/dev/null || true; \
 	TIMESTAMP_FLAG=$$(if [ -z "$(SUFFIX)" ]; then echo "--timestamp"; else echo "--timestamp=none"; fi); \
-	codesign --force --sign "$(CODESIGN_ID)" --entitlements LidGuard.entitlements \
+	codesign --force --sign "$(CODESIGN_ID)" --entitlements $(ENTITLEMENTS) \
 		-o runtime $$TIMESTAMP_FLAG \
 		-r='$(CODESIGN_REQ)' \
 		$(BUNDLE); \

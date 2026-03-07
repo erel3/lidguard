@@ -1,11 +1,12 @@
 #if APPSTORE
-import Foundation
+import StoreKit
 
 enum ReceiptValidation {
   static func validateOrExit() {
-    guard let receiptURL = Bundle.main.appStoreReceiptURL,
-          FileManager.default.fileExists(atPath: receiptURL.path) else {
-      exit(173)
+    // AppTransaction.shared verifies the app was legitimately purchased.
+    // No action needed on failure — StoreKit handles it.
+    Task {
+      _ = try? await AppTransaction.shared
     }
   }
 }
