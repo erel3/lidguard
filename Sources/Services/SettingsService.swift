@@ -29,6 +29,7 @@ final class SettingsService {
 
     // Behaviors
     static let behaviorSleepPrevention = "lidguard.behaviorSleepPrevention"
+    static let behaviorLidCloseSleep = "lidguard.behaviorLidCloseSleep"
     static let behaviorShutdownBlocking = "lidguard.behaviorShutdownBlocking"
     static let behaviorLockScreen = "lidguard.behaviorLockScreen"
     static let behaviorAlarm = "lidguard.behaviorAlarm"
@@ -152,6 +153,11 @@ final class SettingsService {
     set { defaults.set(newValue, forKey: Keys.behaviorSleepPrevention) }
   }
 
+  var behaviorLidCloseSleep: Bool {
+    get { defaults.object(forKey: Keys.behaviorLidCloseSleep) as? Bool ?? false }
+    set { defaults.set(newValue, forKey: Keys.behaviorLidCloseSleep) }
+  }
+
   var behaviorShutdownBlocking: Bool {
     get { defaults.object(forKey: Keys.behaviorShutdownBlocking) as? Bool ?? true }
     set { defaults.set(newValue, forKey: Keys.behaviorShutdownBlocking) }
@@ -263,6 +269,7 @@ final class SettingsService {
     defaults.removeObject(forKey: Keys.triggerPowerButton)
     defaults.removeObject(forKey: Keys.shortcutEnabled)
     defaults.removeObject(forKey: Keys.behaviorSleepPrevention)
+    defaults.removeObject(forKey: Keys.behaviorLidCloseSleep)
     defaults.removeObject(forKey: Keys.behaviorShutdownBlocking)
     defaults.removeObject(forKey: Keys.behaviorLockScreen)
     defaults.removeObject(forKey: Keys.behaviorAlarm)

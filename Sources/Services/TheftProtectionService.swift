@@ -153,6 +153,7 @@ final class TheftProtectionService {
     let settings = SettingsService.shared
     var result: [String] = []
     if settings.behaviorSleepPrevention { result.append("sleep prevention") }
+    if settings.behaviorLidCloseSleep { result.append("lid-close sleep prevention") }
     if settings.behaviorShutdownBlocking { result.append("shutdown blocking") }
     if settings.behaviorLockScreen { result.append("lock screen") }
     if settings.behaviorAlarm {
@@ -170,7 +171,7 @@ final class TheftProtectionService {
     if settings.triggerPowerDisconnect { powerMonitor.start() }
 
     // Daemon features
-    if settings.behaviorSleepPrevention { daemonClient.enablePmset() }
+    if settings.behaviorLidCloseSleep { daemonClient.enablePmset() }
     if settings.triggerPowerButton { daemonClient.enablePowerButton() }
   }
 
@@ -611,7 +612,7 @@ extension TheftProtectionService: DaemonIPCDelegate {
     // Re-sync state: if protection is active, re-send enables
     if state == .enabled || state == .enabledBluetooth || state == .theftMode {
       let settings = SettingsService.shared
-      if settings.behaviorSleepPrevention { client.enablePmset() }
+      if settings.behaviorLidCloseSleep { client.enablePmset() }
       if settings.triggerPowerButton { client.enablePowerButton() }
       if state == .theftMode && settings.behaviorLockScreen {
         let name = settings.contactName ?? ""

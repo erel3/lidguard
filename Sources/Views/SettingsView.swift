@@ -46,6 +46,7 @@ struct SettingsView: View {
 
   // Protection
   @State private var behaviorSleepPrevention: Bool = true
+  @State private var behaviorLidCloseSleep: Bool = true
   @State private var behaviorShutdownBlocking: Bool = true
   @State private var behaviorLockScreen: Bool = true
   @State private var behaviorAlarm: Bool = true
@@ -301,17 +302,15 @@ struct SettingsView: View {
       Section {
         Toggle("Lid close detection", isOn: $triggerLidClose)
         Toggle("Power disconnect detection", isOn: $triggerPowerDisconnect)
-        Toggle("Power button detection", isOn: $triggerPowerButton)
-          .disabled(!isDaemonConnected)
-          .if(!isDaemonConnected) { $0.overlay(helperRequiredBadge, alignment: .trailing) }
+        helperToggle("Power button detection", isOn: $triggerPowerButton)
       } header: {
         Text("Theft Mode Triggers")
       } footer: {
-        Text(isDaemonConnected
-          ? "Power button detection requires Accessibility permission for the Helper."
-          : "Power button detection requires LidGuard Helper.")
-          .font(.footnote)
-          .foregroundStyle(.secondary)
+        if isDaemonConnected {
+          Text("Power button detection requires Accessibility permission for the Helper.")
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+        }
       }
 
       Section {
@@ -332,16 +331,19 @@ struct SettingsView: View {
   private var protectionTab: some View {
     Form {
       Section {
-        Toggle("Sleep prevention (IOPMAssertion)", isOn: $behaviorSleepPrevention)
+        Toggle("Idle sleep prevention", isOn: $behaviorSleepPrevention)
+        helperToggle("Lid-close sleep prevention", isOn: $behaviorLidCloseSleep)
       } header: {
         Text("Sleep")
+      } footer: {
+        Text("Idle prevents system sleep via IOPMAssertion. Lid-close uses pmset disablesleep via Helper to keep the Mac running with lid closed.")
+          .font(.footnote)
+          .foregroundStyle(.secondary)
       }
 
       Section {
         Toggle("Shutdown blocking", isOn: $behaviorShutdownBlocking)
-        Toggle("Lock screen message", isOn: $behaviorLockScreen)
-          .disabled(!isDaemonConnected)
-          .if(!isDaemonConnected) { $0.overlay(helperRequiredBadge, alignment: .trailing) }
+        helperToggle("Lock screen message", isOn: $behaviorLockScreen)
           .onChange(of: behaviorLockScreen) { _, newValue in
             if newValue && isDaemonConnected {
               requestContactsAndPopulate()
@@ -502,6 +504,7 @@ struct SettingsView: View {
     triggerPowerButton = settings.triggerPowerButton
     shortcutEnabled = settings.shortcutEnabled
     behaviorSleepPrevention = settings.behaviorSleepPrevention
+    behaviorLidCloseSleep = settings.behaviorLidCloseSleep
     behaviorShutdownBlocking = settings.behaviorShutdownBlocking
     behaviorLockScreen = settings.behaviorLockScreen
     behaviorAlarm = settings.behaviorAlarm
@@ -527,6 +530,7 @@ struct SettingsView: View {
     settings.shortcutEnabled = shortcutEnabled
     NotificationCenter.default.post(name: .shortcutSettingsChanged, object: nil)
     settings.behaviorSleepPrevention = behaviorSleepPrevention
+    settings.behaviorLidCloseSleep = behaviorLidCloseSleep
     settings.behaviorShutdownBlocking = behaviorShutdownBlocking
     settings.behaviorLockScreen = behaviorLockScreen
     settings.behaviorAlarm = behaviorAlarm
@@ -621,23 +625,17 @@ struct SettingsView: View {
     return mobile?.value.stringValue ?? me.phoneNumbers.first?.value.stringValue
   }
 
-  private var helperRequiredBadge: some View {
-    Label("Requires Helper", systemImage: "exclamationmark.triangle.fill")
-      .font(.caption2)
-      .foregroundStyle(.orange)
-      .padding(.trailing, 4)
-  }
-}
-
-// MARK: - Conditional Modifier
-
-extension View {
-  @ViewBuilder
-  func `if`<Content: View>(_ condition: Bool, transform: (Self) -> Content) -> some View {
-    if condition {
-      transform(self)
-    } else {
-      self
+  private func helperToggle(_ title: String, isOn: Binding<Bool>) -> some View {
+    Toggle(isOn: isOn) {
+      HStack(spacing: 6) {
+        Text(title)
+        if !isDaemonConnected {
+          Text("(requires Helper)")
+            .font(.caption)
+            .foregroundStyle(.orange)
+        }
+      }
     }
+    .disabled(!isDaemonConnected)
   }
 }

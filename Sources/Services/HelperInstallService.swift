@@ -186,7 +186,7 @@ final class HelperInstallService {
         installLaunchAgent()
 
         // Install sudoers for passwordless pmset
-        if SettingsService.shared.behaviorSleepPrevention {
+        if SettingsService.shared.behaviorLidCloseSleep {
           installSudoers()
         }
 
