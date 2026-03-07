@@ -110,6 +110,17 @@ final class TheftProtectionService {
     if SettingsService.shared.bluetoothAutoArmEnabled {
       bluetoothProximityService.start()
     }
+
+    DistributedNotificationCenter.default().addObserver(
+      forName: NSNotification.Name("com.apple.screenIsUnlocked"),
+      object: nil, queue: .main
+    ) { [weak self] _ in
+      guard let self = self, self.state == .theftMode else { return }
+      Logger.theft.info("Screen unlocked — deactivating theft mode")
+      ActivityLog.logAsync(.theft, "Screen unlocked — owner authenticated")
+      self.deactivateTheftMode()
+    }
+
     Logger.theft.info("Started (protection disabled)")
   }
 
