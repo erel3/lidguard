@@ -8,7 +8,6 @@ enum LogCategory: String, CaseIterable, Codable {
   case trigger
   case theft
   case telegram
-  case pushover
   case power
   case location
   case bluetooth
@@ -21,7 +20,6 @@ enum LogCategory: String, CaseIterable, Codable {
     case .trigger: return "⚠️"
     case .theft: return "🚨"
     case .telegram: return "📱"
-    case .pushover: return "🔔"
     case .power: return "🔋"
     case .location: return "📍"
     case .bluetooth: return "📶"
@@ -36,7 +34,6 @@ enum LogCategory: String, CaseIterable, Codable {
     case .trigger: return "Trigger"
     case .theft: return "Theft"
     case .telegram: return "Telegram"
-    case .pushover: return "Pushover"
     case .power: return "Power"
     case .location: return "Location"
     case .bluetooth: return "Bluetooth"

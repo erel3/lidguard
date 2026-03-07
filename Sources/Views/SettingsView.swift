@@ -1,4 +1,5 @@
 import Contacts
+import KeyboardShortcuts
 import SwiftUI
 
 enum SettingsSection: String, CaseIterable, Identifiable {
@@ -42,8 +43,6 @@ struct SettingsView: View {
 
   // Global Shortcut
   @State private var shortcutEnabled: Bool = false
-  @State private var shortcutKeyCode: Int = -1
-  @State private var shortcutModifiers: UInt = 0
 
   // Protection
   @State private var behaviorSleepPrevention: Bool = true
@@ -60,16 +59,11 @@ struct SettingsView: View {
   @State private var bluetoothArmGracePeriod: Double = 30
   @State private var trustedBLEDevices: [TrustedBLEDevice] = []
   @State private var btShortcutEnabled: Bool = false
-  @State private var btShortcutKeyCode: Int = -1
-  @State private var btShortcutModifiers: UInt = 0
 
   // Notifications
   @State private var telegramBotToken: String = ""
   @State private var telegramChatId: String = ""
   @State private var telegramEnabled: Bool = true
-  @State private var pushoverUserKey: String = ""
-  @State private var pushoverApiToken: String = ""
-  @State private var pushoverEnabled: Bool = true
 
   @State private var selectedSection: SettingsSection? = .general
   @State private var showingResetConfirmation = false
@@ -257,24 +251,12 @@ struct SettingsView: View {
       Section {
         Toggle("Enable global shortcut", isOn: $shortcutEnabled)
         if shortcutEnabled {
-          LabeledContent("Shortcut") {
-            HStack(spacing: 8) {
-              ShortcutRecorderView(keyCode: $shortcutKeyCode, modifiers: $shortcutModifiers)
-                .frame(width: 160, height: 24)
-              if shortcutKeyCode >= 0 && shortcutModifiers != 0 {
-                Button("Clear") {
-                  shortcutKeyCode = -1
-                  shortcutModifiers = 0
-                }
-                .buttonStyle(.borderless)
-              }
-            }
-          }
+          KeyboardShortcuts.Recorder("Shortcut", name: .toggleProtection)
         }
       } header: {
         Text("Global Keyboard Shortcut")
       } footer: {
-        Text("Press the shortcut anywhere to enable protection and lock screen. Requires Accessibility permission.")
+        Text("Press the shortcut anywhere to enable protection and lock screen. Requires Input Monitoring permission.")
           .font(.footnote)
           .foregroundStyle(.secondary)
       }
@@ -361,24 +343,12 @@ struct SettingsView: View {
       Section {
         Toggle("Enable global shortcut", isOn: $btShortcutEnabled)
         if btShortcutEnabled {
-          LabeledContent("Shortcut") {
-            HStack(spacing: 8) {
-              ShortcutRecorderView(keyCode: $btShortcutKeyCode, modifiers: $btShortcutModifiers)
-                .frame(width: 160, height: 24)
-              if btShortcutKeyCode >= 0 && btShortcutModifiers != 0 {
-                Button("Clear") {
-                  btShortcutKeyCode = -1
-                  btShortcutModifiers = 0
-                }
-                .buttonStyle(.borderless)
-              }
-            }
-          }
+          KeyboardShortcuts.Recorder("Shortcut", name: .toggleBluetooth)
         }
       } header: {
         Text("Global Keyboard Shortcut")
       } footer: {
-        Text("Press the shortcut anywhere to toggle Bluetooth auto-arm. Requires Accessibility permission.")
+        Text("Press the shortcut anywhere to toggle Bluetooth auto-arm. Requires Input Monitoring permission.")
           .font(.footnote)
           .foregroundStyle(.secondary)
       }
@@ -425,19 +395,6 @@ struct SettingsView: View {
         Text("Telegram")
       }
 
-      Section {
-        LabeledContent("User Key") {
-          SecureField("", text: $pushoverUserKey)
-            .textFieldStyle(.plain)
-        }
-        LabeledContent("API Token") {
-          SecureField("", text: $pushoverApiToken)
-            .textFieldStyle(.plain)
-        }
-        Toggle("Enable notifications", isOn: $pushoverEnabled)
-      } header: {
-        Text("Pushover")
-      }
     }
     .formStyle(.grouped)
   }
@@ -450,9 +407,6 @@ struct SettingsView: View {
     telegramBotToken = settings.telegramBotToken ?? ""
     telegramChatId = settings.telegramChatId ?? ""
     telegramEnabled = settings.telegramEnabled
-    pushoverUserKey = settings.pushoverUserKey ?? ""
-    pushoverApiToken = settings.pushoverApiToken ?? ""
-    pushoverEnabled = settings.pushoverEnabled
     startAtLogin = loginItem.isEnabled
     autoUpdateEnabled = settings.autoUpdateEnabled
     sleepPreventionInstalled = pmset.isInstalled()
@@ -463,8 +417,6 @@ struct SettingsView: View {
     triggerPowerDisconnect = settings.triggerPowerDisconnect
     triggerPowerButton = settings.triggerPowerButton
     shortcutEnabled = settings.shortcutEnabled
-    shortcutKeyCode = settings.shortcutKeyCode
-    shortcutModifiers = UInt(settings.shortcutModifiers)
     behaviorSleepPrevention = settings.behaviorSleepPrevention
     behaviorShutdownBlocking = settings.behaviorShutdownBlocking
     behaviorLockScreen = settings.behaviorLockScreen
@@ -473,8 +425,6 @@ struct SettingsView: View {
     bluetoothArmGracePeriod = settings.bluetoothArmGracePeriod
     trustedBLEDevices = settings.trustedBLEDevices
     btShortcutEnabled = settings.btShortcutEnabled
-    btShortcutKeyCode = settings.btShortcutKeyCode
-    btShortcutModifiers = UInt(settings.btShortcutModifiers)
   }
 
   private func saveSettings() {
@@ -483,9 +433,6 @@ struct SettingsView: View {
     settings.telegramBotToken = telegramBotToken.isEmpty ? nil : telegramBotToken
     settings.telegramChatId = telegramChatId.isEmpty ? nil : telegramChatId
     settings.telegramEnabled = telegramEnabled
-    settings.pushoverUserKey = pushoverUserKey.isEmpty ? nil : pushoverUserKey
-    settings.pushoverApiToken = pushoverApiToken.isEmpty ? nil : pushoverApiToken
-    settings.pushoverEnabled = pushoverEnabled
     settings.alarmSound = selectedAlarmSound
     settings.behaviorAutoAlarm = behaviorAutoAlarm
     settings.alarmVolume = Int(alarmVolume)
@@ -493,8 +440,6 @@ struct SettingsView: View {
     settings.triggerPowerDisconnect = triggerPowerDisconnect
     settings.triggerPowerButton = triggerPowerButton
     settings.shortcutEnabled = shortcutEnabled
-    settings.shortcutKeyCode = shortcutKeyCode
-    settings.shortcutModifiers = UInt(shortcutModifiers)
     NotificationCenter.default.post(name: .shortcutSettingsChanged, object: nil)
     settings.behaviorSleepPrevention = behaviorSleepPrevention
     settings.behaviorShutdownBlocking = behaviorShutdownBlocking
@@ -505,8 +450,6 @@ struct SettingsView: View {
     settings.bluetoothArmGracePeriod = bluetoothArmGracePeriod
     settings.trustedBLEDevices = trustedBLEDevices
     settings.btShortcutEnabled = btShortcutEnabled
-    settings.btShortcutKeyCode = btShortcutKeyCode
-    settings.btShortcutModifiers = UInt(btShortcutModifiers)
     NotificationCenter.default.post(name: .bluetoothSettingsChanged, object: nil)
 
     settings.autoUpdateEnabled = autoUpdateEnabled

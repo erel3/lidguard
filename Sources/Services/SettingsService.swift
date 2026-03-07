@@ -14,7 +14,6 @@ final class SettingsService {
     static let contactName = "lidguard.contactName"
     static let contactPhone = "lidguard.contactPhone"
     static let telegramEnabled = "lidguard.telegramEnabled"
-    static let pushoverEnabled = "lidguard.pushoverEnabled"
     static let alarmSound = "lidguard.alarmSound"
 
     // Triggers
@@ -23,8 +22,6 @@ final class SettingsService {
     static let triggerPowerButton = "lidguard.triggerPowerButton"
 
     // Global Shortcut
-    static let shortcutKeyCode = "lidguard.shortcutKeyCode"
-    static let shortcutModifiers = "lidguard.shortcutModifiers"
     static let shortcutEnabled = "lidguard.shortcutEnabled"
 
     // Behaviors
@@ -41,8 +38,6 @@ final class SettingsService {
     static let skippedVersion = "lidguard.skippedVersion"
 
     // Bluetooth Shortcut
-    static let btShortcutKeyCode = "lidguard.btShortcutKeyCode"
-    static let btShortcutModifiers = "lidguard.btShortcutModifiers"
     static let btShortcutEnabled = "lidguard.btShortcutEnabled"
 
     // Bluetooth
@@ -54,8 +49,6 @@ final class SettingsService {
   private enum KeychainKeys {
     static let telegramBotToken = "telegram.botToken"
     static let telegramChatId = "telegram.chatId"
-    static let pushoverUserKey = "pushover.userKey"
-    static let pushoverApiToken = "pushover.apiToken"
   }
 
   private init() {}
@@ -112,39 +105,6 @@ final class SettingsService {
     telegramBotToken != nil && telegramChatId != nil
   }
 
-  // MARK: - Pushover (Keychain)
-
-  var pushoverUserKey: String? {
-    get { KeychainService.load(key: KeychainKeys.pushoverUserKey) }
-    set {
-      if let value = newValue {
-        KeychainService.save(key: KeychainKeys.pushoverUserKey, value: value)
-      } else {
-        KeychainService.delete(key: KeychainKeys.pushoverUserKey)
-      }
-    }
-  }
-
-  var pushoverApiToken: String? {
-    get { KeychainService.load(key: KeychainKeys.pushoverApiToken) }
-    set {
-      if let value = newValue {
-        KeychainService.save(key: KeychainKeys.pushoverApiToken, value: value)
-      } else {
-        KeychainService.delete(key: KeychainKeys.pushoverApiToken)
-      }
-    }
-  }
-
-  var pushoverEnabled: Bool {
-    get { defaults.object(forKey: Keys.pushoverEnabled) as? Bool ?? true }
-    set { defaults.set(newValue, forKey: Keys.pushoverEnabled) }
-  }
-
-  var isPushoverConfigured: Bool {
-    pushoverUserKey != nil && pushoverApiToken != nil
-  }
-
   // MARK: - Alarm Sound
 
   var alarmSound: String {
@@ -171,23 +131,9 @@ final class SettingsService {
 
   // MARK: - Global Shortcut
 
-  var shortcutKeyCode: Int {
-    get { defaults.object(forKey: Keys.shortcutKeyCode) as? Int ?? -1 }
-    set { defaults.set(newValue, forKey: Keys.shortcutKeyCode) }
-  }
-
-  var shortcutModifiers: UInt {
-    get { defaults.object(forKey: Keys.shortcutModifiers) as? UInt ?? 0 }
-    set { defaults.set(newValue, forKey: Keys.shortcutModifiers) }
-  }
-
   var shortcutEnabled: Bool {
     get { defaults.object(forKey: Keys.shortcutEnabled) as? Bool ?? false }
     set { defaults.set(newValue, forKey: Keys.shortcutEnabled) }
-  }
-
-  var isShortcutConfigured: Bool {
-    shortcutKeyCode >= 0 && shortcutModifiers != 0
   }
 
   // MARK: - Behaviors
@@ -241,23 +187,9 @@ final class SettingsService {
 
   // MARK: - Bluetooth Shortcut
 
-  var btShortcutKeyCode: Int {
-    get { defaults.object(forKey: Keys.btShortcutKeyCode) as? Int ?? -1 }
-    set { defaults.set(newValue, forKey: Keys.btShortcutKeyCode) }
-  }
-
-  var btShortcutModifiers: UInt {
-    get { defaults.object(forKey: Keys.btShortcutModifiers) as? UInt ?? 0 }
-    set { defaults.set(newValue, forKey: Keys.btShortcutModifiers) }
-  }
-
   var btShortcutEnabled: Bool {
     get { defaults.object(forKey: Keys.btShortcutEnabled) as? Bool ?? false }
     set { defaults.set(newValue, forKey: Keys.btShortcutEnabled) }
-  }
-
-  var isBtShortcutConfigured: Bool {
-    btShortcutKeyCode >= 0 && btShortcutModifiers != 0
   }
 
   // MARK: - Bluetooth
@@ -294,7 +226,7 @@ final class SettingsService {
   // MARK: - Configuration Status
 
   func isConfigured() -> Bool {
-    isTelegramConfigured || isPushoverConfigured
+    isTelegramConfigured
   }
 
   // MARK: - Reset
@@ -304,13 +236,10 @@ final class SettingsService {
     defaults.removeObject(forKey: Keys.contactName)
     defaults.removeObject(forKey: Keys.contactPhone)
     defaults.removeObject(forKey: Keys.telegramEnabled)
-    defaults.removeObject(forKey: Keys.pushoverEnabled)
     defaults.removeObject(forKey: Keys.alarmSound)
     defaults.removeObject(forKey: Keys.triggerLidClose)
     defaults.removeObject(forKey: Keys.triggerPowerDisconnect)
     defaults.removeObject(forKey: Keys.triggerPowerButton)
-    defaults.removeObject(forKey: Keys.shortcutKeyCode)
-    defaults.removeObject(forKey: Keys.shortcutModifiers)
     defaults.removeObject(forKey: Keys.shortcutEnabled)
     defaults.removeObject(forKey: Keys.behaviorSleepPrevention)
     defaults.removeObject(forKey: Keys.behaviorShutdownBlocking)
@@ -321,8 +250,6 @@ final class SettingsService {
     defaults.removeObject(forKey: Keys.autoUpdateEnabled)
     defaults.removeObject(forKey: Keys.lastUpdateCheckDate)
     defaults.removeObject(forKey: Keys.skippedVersion)
-    defaults.removeObject(forKey: Keys.btShortcutKeyCode)
-    defaults.removeObject(forKey: Keys.btShortcutModifiers)
     defaults.removeObject(forKey: Keys.btShortcutEnabled)
     defaults.removeObject(forKey: Keys.bluetoothAutoArmEnabled)
     defaults.removeObject(forKey: Keys.trustedBLEDevices)

@@ -31,7 +31,6 @@ final class TheftProtectionService {
   weak var delegate: TheftProtectionDelegate?
 
   private let notificationService: NotificationService
-  private let pushover: PushoverService
   private let deviceInfoCollector: DeviceInfoCollecting
   private let sleepPrevention: SleepPrevention
   private let lidMonitor: LidMonitorService
@@ -53,7 +52,6 @@ final class TheftProtectionService {
   private(set) var state: ProtectionState = .disabled
 
   init(notificationService: NotificationService = TelegramService(),
-       pushover: PushoverService = PushoverService(),
        deviceInfoCollector: DeviceInfoCollecting = DeviceInfoCollector(),
        sleepPrevention: SleepPrevention = SleepPreventionService(),
        lidMonitor: LidMonitorService = LidMonitorService(),
@@ -61,7 +59,6 @@ final class TheftProtectionService {
        sleepWakeService: SleepWakeService = SleepWakeService(),
        powerMonitor: PowerMonitorService = PowerMonitorService()) {
     self.notificationService = notificationService
-    self.pushover = pushover
     self.deviceInfoCollector = deviceInfoCollector
     self.sleepPrevention = sleepPrevention
     self.lidMonitor = lidMonitor
@@ -258,9 +255,6 @@ final class TheftProtectionService {
       )
     }
 
-    // Immediate Pushover alert (fast)
-    pushover.send(message: "🚨 THEFT MODE ACTIVATED - \(trigger.description)")
-
     // Auto-play alarm if enabled
     if SettingsService.shared.behaviorAlarm && SettingsService.shared.behaviorAutoAlarm {
       AlarmAudioManager.shared.play()
@@ -387,7 +381,6 @@ final class TheftProtectionService {
       )
     }
 
-    pushover.send(message: "🚨 \(title) - \(subtitle)")
   }
 
   private func startTracking() {

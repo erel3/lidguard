@@ -1,4 +1,4 @@
-// swift-tools-version:5.9
+// swift-tools-version:6.2
 import PackageDescription
 
 let package = Package(
@@ -6,16 +6,21 @@ let package = Package(
   platforms: [.macOS(.v14)],
   dependencies: [
     .package(url: "https://github.com/Lakr233/SkyLightWindow", from: "1.0.0"),
-    .package(url: "https://github.com/gonzalezreal/swift-markdown-ui", from: "2.0.2")
+    .package(url: "https://github.com/gonzalezreal/swift-markdown-ui", from: "2.0.2"),
+    .package(url: "https://github.com/sindresorhus/KeyboardShortcuts", from: "2.0.0")
   ],
   targets: [
     .executableTarget(
       name: "LidGuard",
       dependencies: [
         "SkyLightWindow",
-        .product(name: "MarkdownUI", package: "swift-markdown-ui")
+        .product(name: "MarkdownUI", package: "swift-markdown-ui"),
+        "KeyboardShortcuts"
       ],
-      path: "Sources"
+      path: "Sources",
+      swiftSettings: [
+        .swiftLanguageMode(.v5)
+      ]
     )
   ]
 )
