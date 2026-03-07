@@ -42,8 +42,6 @@ struct SettingsView: View {
   @State private var triggerPowerButton: Bool = false
 
   // Global Shortcut
-  @State private var shortcutEnabled: Bool = false
-
   // Protection
   @State private var behaviorSleepPrevention: Bool = true
   @State private var behaviorLidCloseSleep: Bool = true
@@ -59,7 +57,6 @@ struct SettingsView: View {
   @State private var bluetoothAutoArmEnabled: Bool = false
   @State private var bluetoothArmGracePeriod: Double = 30
   @State private var trustedBLEDevices: [TrustedBLEDevice] = []
-  @State private var btShortcutEnabled: Bool = false
 
   // Notifications
   @State private var telegramBotToken: String = ""
@@ -303,11 +300,16 @@ struct SettingsView: View {
         Toggle("Lid close detection", isOn: $triggerLidClose)
         Toggle("Power disconnect detection", isOn: $triggerPowerDisconnect)
         helperToggle("Power button detection", isOn: $triggerPowerButton)
+          .onChange(of: triggerPowerButton) { _, newValue in
+            if newValue && isDaemonConnected {
+              openAccessibilitySettings()
+            }
+          }
       } header: {
         Text("Theft Mode Triggers")
       } footer: {
-        if isDaemonConnected {
-          Text("Power button detection requires Accessibility permission for the Helper.")
+        if isDaemonConnected && triggerPowerButton {
+          Text("Grant Accessibility permission to lidguard-helper in System Settings.")
             .font(.footnote)
             .foregroundStyle(.secondary)
         }
@@ -420,10 +422,7 @@ struct SettingsView: View {
       }
 
       Section {
-        Toggle("Enable global shortcut", isOn: $btShortcutEnabled)
-        if btShortcutEnabled {
-          KeyboardShortcuts.Recorder("Shortcut", name: .toggleBluetooth)
-        }
+        KeyboardShortcuts.Recorder("Shortcut", name: .toggleBluetooth)
       } header: {
         Text("Global Keyboard Shortcut")
       } footer: {
@@ -502,7 +501,6 @@ struct SettingsView: View {
     triggerLidClose = settings.triggerLidClose
     triggerPowerDisconnect = settings.triggerPowerDisconnect
     triggerPowerButton = settings.triggerPowerButton
-    shortcutEnabled = settings.shortcutEnabled
     behaviorSleepPrevention = settings.behaviorSleepPrevention
     behaviorLidCloseSleep = settings.behaviorLidCloseSleep
     behaviorShutdownBlocking = settings.behaviorShutdownBlocking
@@ -512,7 +510,6 @@ struct SettingsView: View {
     bluetoothAutoArmEnabled = settings.bluetoothAutoArmEnabled
     bluetoothArmGracePeriod = settings.bluetoothArmGracePeriod
     trustedBLEDevices = settings.trustedBLEDevices
-    btShortcutEnabled = settings.btShortcutEnabled
   }
 
   private func saveSettings() {
@@ -527,7 +524,6 @@ struct SettingsView: View {
     settings.triggerLidClose = triggerLidClose
     settings.triggerPowerDisconnect = triggerPowerDisconnect
     settings.triggerPowerButton = triggerPowerButton
-    settings.shortcutEnabled = shortcutEnabled
     NotificationCenter.default.post(name: .shortcutSettingsChanged, object: nil)
     settings.behaviorSleepPrevention = behaviorSleepPrevention
     settings.behaviorLidCloseSleep = behaviorLidCloseSleep
@@ -539,7 +535,6 @@ struct SettingsView: View {
     settings.bluetoothAutoArmEnabled = bluetoothAutoArmEnabled
     settings.bluetoothArmGracePeriod = bluetoothArmGracePeriod
     settings.trustedBLEDevices = trustedBLEDevices
-    settings.btShortcutEnabled = btShortcutEnabled
     NotificationCenter.default.post(name: .bluetoothSettingsChanged, object: nil)
 
     settings.autoUpdateEnabled = autoUpdateEnabled
@@ -560,6 +555,10 @@ struct SettingsView: View {
     settings.resetAll()
     loadSettings()
     ActivityLog.logAsync(.system, "All settings reset")
+  }
+
+  private func openAccessibilitySettings() {
+    NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!)
   }
 
   private func toggleLoginItem(_ enable: Bool) {

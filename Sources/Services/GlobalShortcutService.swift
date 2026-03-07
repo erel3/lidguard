@@ -25,29 +25,21 @@ final class GlobalShortcutService {
   private var lastBtTriggerTime: Date = .distantPast
 
   func start() {
-    let settings = SettingsService.shared
-
-    if settings.shortcutEnabled {
-      KeyboardShortcuts.onKeyUp(for: .toggleProtection) { [weak self] in
-        guard let self, Date().timeIntervalSince(self.lastTriggerTime) > 1.0 else { return }
-        self.lastTriggerTime = Date()
-        ActivityLog.logAsync(.trigger, "Global shortcut pressed")
-        self.delegate?.globalShortcutTriggered()
-      }
-      Logger.theft.info("Global shortcut monitor started")
-      ActivityLog.logAsync(.system, "Global shortcut monitor started")
+    KeyboardShortcuts.onKeyUp(for: .toggleProtection) { [weak self] in
+      guard let self, Date().timeIntervalSince(self.lastTriggerTime) > 1.0 else { return }
+      self.lastTriggerTime = Date()
+      ActivityLog.logAsync(.trigger, "Global shortcut pressed")
+      self.delegate?.globalShortcutTriggered()
     }
 
-    if settings.btShortcutEnabled {
-      KeyboardShortcuts.onKeyUp(for: .toggleBluetooth) { [weak self] in
-        guard let self, Date().timeIntervalSince(self.lastBtTriggerTime) > 1.0 else { return }
-        self.lastBtTriggerTime = Date()
-        ActivityLog.logAsync(.bluetooth, "Bluetooth shortcut pressed")
-        self.delegate?.bluetoothShortcutTriggered()
-      }
-      Logger.bluetooth.info("Bluetooth shortcut monitor started")
-      ActivityLog.logAsync(.bluetooth, "Bluetooth shortcut monitor started")
+    KeyboardShortcuts.onKeyUp(for: .toggleBluetooth) { [weak self] in
+      guard let self, Date().timeIntervalSince(self.lastBtTriggerTime) > 1.0 else { return }
+      self.lastBtTriggerTime = Date()
+      ActivityLog.logAsync(.bluetooth, "Bluetooth shortcut pressed")
+      self.delegate?.bluetoothShortcutTriggered()
     }
+
+    Logger.theft.info("Global shortcut monitor started")
   }
 
   func stop() {
