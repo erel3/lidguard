@@ -67,9 +67,6 @@ struct SettingsView: View {
   @State private var telegramBotToken: String = ""
   @State private var telegramChatId: String = ""
   @State private var telegramEnabled: Bool = true
-  @State private var pushoverUserKey: String = ""
-  @State private var pushoverApiToken: String = ""
-  @State private var pushoverEnabled: Bool = true
 
   @State private var selectedSection: SettingsSection? = .general
   @State private var showingResetConfirmation = false
@@ -425,19 +422,6 @@ struct SettingsView: View {
         Text("Telegram")
       }
 
-      Section {
-        LabeledContent("User Key") {
-          SecureField("", text: $pushoverUserKey)
-            .textFieldStyle(.plain)
-        }
-        LabeledContent("API Token") {
-          SecureField("", text: $pushoverApiToken)
-            .textFieldStyle(.plain)
-        }
-        Toggle("Enable notifications", isOn: $pushoverEnabled)
-      } header: {
-        Text("Pushover")
-      }
     }
     .formStyle(.grouped)
   }
@@ -450,9 +434,6 @@ struct SettingsView: View {
     telegramBotToken = settings.telegramBotToken ?? ""
     telegramChatId = settings.telegramChatId ?? ""
     telegramEnabled = settings.telegramEnabled
-    pushoverUserKey = settings.pushoverUserKey ?? ""
-    pushoverApiToken = settings.pushoverApiToken ?? ""
-    pushoverEnabled = settings.pushoverEnabled
     startAtLogin = loginItem.isEnabled
     autoUpdateEnabled = settings.autoUpdateEnabled
     sleepPreventionInstalled = pmset.isInstalled()
@@ -483,9 +464,6 @@ struct SettingsView: View {
     settings.telegramBotToken = telegramBotToken.isEmpty ? nil : telegramBotToken
     settings.telegramChatId = telegramChatId.isEmpty ? nil : telegramChatId
     settings.telegramEnabled = telegramEnabled
-    settings.pushoverUserKey = pushoverUserKey.isEmpty ? nil : pushoverUserKey
-    settings.pushoverApiToken = pushoverApiToken.isEmpty ? nil : pushoverApiToken
-    settings.pushoverEnabled = pushoverEnabled
     settings.alarmSound = selectedAlarmSound
     settings.behaviorAutoAlarm = behaviorAutoAlarm
     settings.alarmVolume = Int(alarmVolume)

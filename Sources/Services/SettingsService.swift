@@ -14,7 +14,6 @@ final class SettingsService {
     static let contactName = "lidguard.contactName"
     static let contactPhone = "lidguard.contactPhone"
     static let telegramEnabled = "lidguard.telegramEnabled"
-    static let pushoverEnabled = "lidguard.pushoverEnabled"
     static let alarmSound = "lidguard.alarmSound"
 
     // Triggers
@@ -54,8 +53,6 @@ final class SettingsService {
   private enum KeychainKeys {
     static let telegramBotToken = "telegram.botToken"
     static let telegramChatId = "telegram.chatId"
-    static let pushoverUserKey = "pushover.userKey"
-    static let pushoverApiToken = "pushover.apiToken"
   }
 
   private init() {}
@@ -110,39 +107,6 @@ final class SettingsService {
 
   var isTelegramConfigured: Bool {
     telegramBotToken != nil && telegramChatId != nil
-  }
-
-  // MARK: - Pushover (Keychain)
-
-  var pushoverUserKey: String? {
-    get { KeychainService.load(key: KeychainKeys.pushoverUserKey) }
-    set {
-      if let value = newValue {
-        KeychainService.save(key: KeychainKeys.pushoverUserKey, value: value)
-      } else {
-        KeychainService.delete(key: KeychainKeys.pushoverUserKey)
-      }
-    }
-  }
-
-  var pushoverApiToken: String? {
-    get { KeychainService.load(key: KeychainKeys.pushoverApiToken) }
-    set {
-      if let value = newValue {
-        KeychainService.save(key: KeychainKeys.pushoverApiToken, value: value)
-      } else {
-        KeychainService.delete(key: KeychainKeys.pushoverApiToken)
-      }
-    }
-  }
-
-  var pushoverEnabled: Bool {
-    get { defaults.object(forKey: Keys.pushoverEnabled) as? Bool ?? true }
-    set { defaults.set(newValue, forKey: Keys.pushoverEnabled) }
-  }
-
-  var isPushoverConfigured: Bool {
-    pushoverUserKey != nil && pushoverApiToken != nil
   }
 
   // MARK: - Alarm Sound
@@ -294,7 +258,7 @@ final class SettingsService {
   // MARK: - Configuration Status
 
   func isConfigured() -> Bool {
-    isTelegramConfigured || isPushoverConfigured
+    isTelegramConfigured
   }
 
   // MARK: - Reset
@@ -304,7 +268,6 @@ final class SettingsService {
     defaults.removeObject(forKey: Keys.contactName)
     defaults.removeObject(forKey: Keys.contactPhone)
     defaults.removeObject(forKey: Keys.telegramEnabled)
-    defaults.removeObject(forKey: Keys.pushoverEnabled)
     defaults.removeObject(forKey: Keys.alarmSound)
     defaults.removeObject(forKey: Keys.triggerLidClose)
     defaults.removeObject(forKey: Keys.triggerPowerDisconnect)

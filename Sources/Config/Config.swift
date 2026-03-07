@@ -6,7 +6,6 @@ extension Logger {
   static let theft = Logger(subsystem: Config.App.bundleIdentifier, category: "theft")
   static let lid = Logger(subsystem: Config.App.bundleIdentifier, category: "lid")
   static let telegram = Logger(subsystem: Config.App.bundleIdentifier, category: "telegram")
-  static let pushover = Logger(subsystem: Config.App.bundleIdentifier, category: "pushover")
   static let location = Logger(subsystem: Config.App.bundleIdentifier, category: "location")
   static let system = Logger(subsystem: Config.App.bundleIdentifier, category: "system")
   static let power = Logger(subsystem: Config.App.bundleIdentifier, category: "power")
@@ -20,13 +19,6 @@ enum Config {
     static var chatId: String? { SettingsService.shared.telegramChatId }
     static var isEnabled: Bool { SettingsService.shared.telegramEnabled }
     static var isConfigured: Bool { SettingsService.shared.isTelegramConfigured }
-  }
-
-  enum Pushover {
-    static var userKey: String? { SettingsService.shared.pushoverUserKey }
-    static var apiToken: String? { SettingsService.shared.pushoverApiToken }
-    static var isEnabled: Bool { SettingsService.shared.pushoverEnabled }
-    static var isConfigured: Bool { SettingsService.shared.isPushoverConfigured }
   }
 
   enum Tracking {
