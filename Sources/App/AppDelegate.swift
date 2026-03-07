@@ -24,6 +24,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     theftProtection.delegate = self
     theftProtection.start()
 
+    #if APPSTORE
+    ReceiptValidation.validateOrExit()
+    #endif
+
     ActivityLog.logAsync(.system, "LidGuard v\(Config.App.version) started")
     UpdateService.shared.startPeriodicChecks()
 

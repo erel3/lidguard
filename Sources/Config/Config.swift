@@ -27,10 +27,18 @@ enum Config {
     static let lidCheckInterval: TimeInterval = 0.5
   }
 
+  #if APPSTORE
+  enum AppStore {
+    static let appId = "XXXXXXXXXX"  // Fill after App Store submission
+    static let lookupURL = "https://itunes.apple.com/lookup?bundleId=com.akim.lidguard"
+    static let autoCheckInterval: TimeInterval = 24 * 60 * 60  // 24 hours
+  }
+  #else
   enum GitHub {
     static let releasesURL = "https://api.github.com/repos/Erel3/lidguard/releases"
     static let autoCheckInterval: TimeInterval = 12 * 60 * 60  // 12 hours
   }
+  #endif
 
   enum Bluetooth {
     static let scanDuration: TimeInterval = 15

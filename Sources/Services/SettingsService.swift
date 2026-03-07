@@ -37,7 +37,9 @@ final class SettingsService {
     // Updates
     static let autoUpdateEnabled = "lidguard.autoUpdateEnabled"
     static let lastUpdateCheckDate = "lidguard.lastUpdateCheckDate"
+    #if !APPSTORE
     static let skippedVersion = "lidguard.skippedVersion"
+    #endif
 
     // Bluetooth Shortcut
     static let btShortcutEnabled = "lidguard.btShortcutEnabled"
@@ -187,10 +189,12 @@ final class SettingsService {
     set { defaults.set(newValue, forKey: Keys.lastUpdateCheckDate) }
   }
 
+  #if !APPSTORE
   var skippedVersion: String? {
     get { defaults.string(forKey: Keys.skippedVersion) }
     set { defaults.set(newValue, forKey: Keys.skippedVersion) }
   }
+  #endif
 
   // MARK: - Bluetooth Shortcut
 
@@ -257,7 +261,9 @@ final class SettingsService {
     defaults.removeObject(forKey: Keys.offlineSirenEnabled)
     defaults.removeObject(forKey: Keys.autoUpdateEnabled)
     defaults.removeObject(forKey: Keys.lastUpdateCheckDate)
+    #if !APPSTORE
     defaults.removeObject(forKey: Keys.skippedVersion)
+    #endif
     defaults.removeObject(forKey: Keys.btShortcutEnabled)
     defaults.removeObject(forKey: Keys.bluetoothAutoArmEnabled)
     defaults.removeObject(forKey: Keys.trustedBLEDevices)

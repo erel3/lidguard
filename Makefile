@@ -7,12 +7,15 @@ CODESIGN_ID ?= Developer ID Application: Andrey Kim (73R36N2A46)
 CODESIGN_REQ ?= designated => anchor apple generic and certificate leaf[subject.OU] = "73R36N2A46"
 NOTARIZE_PROFILE ?= Notarize
 
-.PHONY: build run run-debug install release clean version icon lint
+.PHONY: build build-appstore run run-debug install release clean version icon lint
 
 VERSION := $(shell cat $(VERSION_FILE) 2>/dev/null || echo "1.0.0")
 
 build:
 	swift build -c release
+
+build-appstore:
+	swift build -c release -Xswiftc -DAPPSTORE
 
 # Dev: bundle with -dev suffix and open
 run: build
