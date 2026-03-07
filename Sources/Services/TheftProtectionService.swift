@@ -29,6 +29,8 @@ protocol TheftProtectionDelegate: AnyObject {
 
 final class TheftProtectionService {
   static private(set) var daemonConnected = false
+  static private(set) var daemonVersion: String?
+  static private(set) var helperNeedsUpdate = false
 
   weak var delegate: TheftProtectionDelegate?
 
@@ -104,6 +106,7 @@ final class TheftProtectionService {
     commandService.start()
     sleepWakeService.start()
     globalShortcutService.start()
+    daemonClient.connect()
     if SettingsService.shared.bluetoothAutoArmEnabled {
       bluetoothProximityService.start()
     }
@@ -150,7 +153,6 @@ final class TheftProtectionService {
     if settings.triggerPowerDisconnect { powerMonitor.start() }
 
     // Daemon features
-    daemonClient.connect()
     if settings.behaviorSleepPrevention { daemonClient.enablePmset() }
     if settings.triggerPowerButton { daemonClient.enablePowerButton() }
   }
@@ -226,7 +228,6 @@ final class TheftProtectionService {
     daemonClient.disablePmset()
     daemonClient.disablePowerButton()
     daemonClient.hideLockScreen()
-    daemonClient.disconnect()
     Logger.theft.info("Protection disabled")
 
     let method = remote ? "Telegram" : "Touch ID"
@@ -576,11 +577,19 @@ extension TheftProtectionService: PowerMonitorDelegate {
 
 // MARK: - DaemonIPCDelegate
 extension TheftProtectionService: DaemonIPCDelegate {
-  func daemonDidConnect(_ client: DaemonIPCClient) {
+  func daemonDidConnect(_ client: DaemonIPCClient, version: String?) {
     TheftProtectionService.daemonConnected = true
+    TheftProtectionService.daemonVersion = version
+    TheftProtectionService.helperNeedsUpdate = Self.isHelperOutdated(version)
     NotificationCenter.default.post(name: .daemonConnectionChanged, object: nil)
-    Logger.daemon.info("Connected to helper daemon")
-    ActivityLog.logAsync(.system, "Helper daemon connected")
+    NotificationCenter.default.post(name: .helperVersionChanged, object: nil)
+    Logger.daemon.info("Connected to helper daemon (v\(version ?? "unknown"))")
+    ActivityLog.logAsync(.system, "Helper daemon connected (v\(version ?? "unknown"))")
+
+    if TheftProtectionService.helperNeedsUpdate {
+      Logger.daemon.warning("Helper daemon outdated (v\(version ?? "?"), requires v\(Config.Daemon.minHelperVersion))")
+      ActivityLog.logAsync(.system, "Helper daemon needs update (v\(version ?? "?") < v\(Config.Daemon.minHelperVersion))")
+    }
     // Re-sync state: if protection is active, re-send enables
     if state == .enabled || state == .enabledBluetooth || state == .theftMode {
       let settings = SettingsService.shared
@@ -596,9 +605,27 @@ extension TheftProtectionService: DaemonIPCDelegate {
 
   func daemonDidDisconnect(_ client: DaemonIPCClient) {
     TheftProtectionService.daemonConnected = false
+    TheftProtectionService.daemonVersion = nil
     NotificationCenter.default.post(name: .daemonConnectionChanged, object: nil)
     Logger.daemon.info("Disconnected from helper daemon")
     ActivityLog.logAsync(.system, "Helper daemon disconnected")
+  }
+
+  private static func isHelperOutdated(_ version: String?) -> Bool {
+    guard let version else { return true }
+    let minVersion = Config.Daemon.minHelperVersion
+    func parts(_ v: String) -> [Int] {
+      v.split(separator: ".").compactMap { Int($0) }
+    }
+    let remote = parts(version)
+    let required = parts(minVersion)
+    let count = max(remote.count, required.count)
+    for i in 0..<count {
+      let r = i < remote.count ? remote[i] : 0
+      let m = i < required.count ? required[i] : 0
+      if r != m { return r < m }
+    }
+    return false
   }
 
   func daemonDidReceivePowerButtonPress(_ client: DaemonIPCClient) {

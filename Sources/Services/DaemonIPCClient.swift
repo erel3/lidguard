@@ -3,7 +3,7 @@ import Network
 import os.log
 
 protocol DaemonIPCDelegate: AnyObject {
-  func daemonDidConnect(_ client: DaemonIPCClient)
+  func daemonDidConnect(_ client: DaemonIPCClient, version: String?)
   func daemonDidDisconnect(_ client: DaemonIPCClient)
   func daemonDidReceivePowerButtonPress(_ client: DaemonIPCClient)
 }
@@ -228,14 +228,20 @@ final class DaemonIPCClient: DaemonIPC {
   // MARK: - Receive
 
   private func startReceive() {
-    connection?.receive(minimumIncompleteLength: 1, maximumLength: 65536) { [weak self] data, _, _, error in
+    connection?.receive(minimumIncompleteLength: 1, maximumLength: 65536) { [weak self] data, _, isComplete, error in
       self?.queue.async {
-        if let data {
+        if let data, !data.isEmpty {
           self?.buffer.append(data)
           self?.processBuffer()
         }
         if let error {
           Logger.daemon.error("Receive error: \(error.localizedDescription)")
+          self?.tearDown()
+          self?.scheduleReconnect()
+          return
+        }
+        if isComplete {
+          Logger.daemon.info("Daemon closed connection")
           self?.tearDown()
           self?.scheduleReconnect()
           return
@@ -268,11 +274,12 @@ final class DaemonIPCClient: DaemonIPC {
       if message.success == true {
         state = .connected
         reconnectDelay = Config.Daemon.reconnectBaseDelay
-        Logger.daemon.info("Authenticated with helper daemon")
+        let version = message.version
+        Logger.daemon.info("Authenticated with helper daemon (v\(version ?? "unknown"))")
         flushPendingCommands()
         notifyMainThread { [weak self] in
           guard let self else { return }
-          self.delegate?.daemonDidConnect(self)
+          self.delegate?.daemonDidConnect(self, version: version)
         }
       } else {
         Logger.daemon.error("Authentication failed — wrong secret?")

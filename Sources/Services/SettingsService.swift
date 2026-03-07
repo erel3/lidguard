@@ -4,6 +4,8 @@ import Foundation
 extension Notification.Name {
   static let bluetoothSettingsChanged = Notification.Name("com.lidguard.bluetoothSettingsChanged")
   static let daemonConnectionChanged = Notification.Name("com.lidguard.daemonConnectionChanged")
+  static let helperVersionChanged = Notification.Name("com.lidguard.helperVersionChanged")
+  static let helperInstallCompleted = Notification.Name("com.lidguard.helperInstallCompleted")
 }
 
 final class SettingsService {

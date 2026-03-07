@@ -66,6 +66,10 @@ struct SettingsView: View {
   @State private var telegramEnabled: Bool = true
 
   @State private var isDaemonConnected = false
+  @State private var daemonVersion: String?
+  @State private var helperNeedsUpdate = false
+  @State private var isInstallingHelper = false
+  @State private var helperInstallResult: Bool?
   @State private var selectedSection: SettingsSection? = .general
   @State private var showingResetConfirmation = false
   @Environment(\.dismiss) private var dismiss
@@ -110,9 +114,18 @@ struct SettingsView: View {
     .onAppear {
       loadSettings()
       isDaemonConnected = TheftProtectionService.daemonConnected
+      daemonVersion = TheftProtectionService.daemonVersion
+      helperNeedsUpdate = TheftProtectionService.helperNeedsUpdate
     }
     .onReceive(NotificationCenter.default.publisher(for: .daemonConnectionChanged)) { _ in
       isDaemonConnected = TheftProtectionService.daemonConnected
+      daemonVersion = TheftProtectionService.daemonVersion
+      helperNeedsUpdate = TheftProtectionService.helperNeedsUpdate
+      if isDaemonConnected { helperInstallResult = nil }
+    }
+    .onReceive(NotificationCenter.default.publisher(for: .helperVersionChanged)) { _ in
+      daemonVersion = TheftProtectionService.daemonVersion
+      helperNeedsUpdate = TheftProtectionService.helperNeedsUpdate
     }
     .alert("Reset All Settings?", isPresented: $showingResetConfirmation) {
       Button("Cancel", role: .cancel) {}
@@ -187,16 +200,55 @@ struct SettingsView: View {
 
       Section {
         HStack {
-          Image(systemName: isDaemonConnected ? "checkmark.circle.fill" : "xmark.circle")
-            .foregroundStyle(isDaemonConnected ? .green : .secondary)
-          Text(isDaemonConnected ? "Helper Connected" : "Helper Not Connected")
+          if isInstallingHelper {
+            ProgressView()
+              .controlSize(.small)
+            Text("Installing Helper...")
+          } else if helperInstallResult == true {
+            Image(systemName: "checkmark.circle.fill")
+              .foregroundStyle(.green)
+            Text("Helper Installed Successfully")
+          } else if helperInstallResult == false {
+            Image(systemName: "xmark.circle.fill")
+              .foregroundStyle(.red)
+            Text("Helper Install Failed")
+          } else if helperNeedsUpdate {
+            Image(systemName: "exclamationmark.triangle.fill")
+              .foregroundStyle(.orange)
+            Text("Helper Outdated (v\(daemonVersion ?? "?"), requires v\(Config.Daemon.minHelperVersion))")
+          } else if isDaemonConnected {
+            Image(systemName: "checkmark.circle.fill")
+              .foregroundStyle(.green)
+            Text("Helper Connected (v\(daemonVersion ?? "?"))")
+          } else {
+            Image(systemName: "xmark.circle")
+              .foregroundStyle(.secondary)
+            Text("Helper Not Connected")
+          }
         }
-        if !isDaemonConnected {
+        if !isDaemonConnected || helperNeedsUpdate {
           HStack {
             Spacer()
-            Link("Install LidGuard Helper...",
-                 destination: URL(string: "https://github.com/Erel3/lidguard-helper/releases")!)
-              .font(.callout)
+            #if APPSTORE
+            Button(helperNeedsUpdate ? "Update Helper..." : "Install Helper...") {
+              HelperInstallService.shared.showInstallInstructions()
+            }
+            .font(.callout)
+            .disabled(isInstallingHelper)
+            #else
+            Button(helperNeedsUpdate ? "Update Helper" : "Install Helper") {
+              isInstallingHelper = true
+              helperInstallResult = nil
+              HelperInstallService.shared.autoInstall { success in
+                DispatchQueue.main.async {
+                  isInstallingHelper = false
+                  helperInstallResult = success
+                }
+              }
+            }
+            .font(.callout)
+            .disabled(isInstallingHelper)
+            #endif
             Spacer()
           }
         }

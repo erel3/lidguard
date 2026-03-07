@@ -54,6 +54,12 @@ enum Config {
     static let secretPath = "Library/Application Support/LidGuard/.ipc-secret"
     static let reconnectBaseDelay: TimeInterval = 2
     static let reconnectMaxDelay: TimeInterval = 30
+    static let minHelperVersion = "1.0.2"
+    static let helperInstallDir = "Library/Application Support/LidGuard"
+    static let helperBinaryName = "lidguard-helper"
+    static let helperReleasesURL = "https://api.github.com/repos/Erel3/lidguard-helper/releases/latest"
+    static let helperBrowserURL = "https://github.com/Erel3/lidguard-helper/releases"
+    static let launchAgentLabel = "com.lidguard.helper"
   }
 
   enum App {
