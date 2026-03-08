@@ -88,6 +88,7 @@ _bundle:
 	    -e "s/<string>1</<string>$$(echo $$VERSION | tr -d '.-dev')</" \
 	    Info.plist > $(BUNDLE)/Contents/Info.plist; \
 	cp Resources/AppIcon.icns $(BUNDLE)/Contents/Resources/ 2>/dev/null || true; \
+	cp PrivacyInfo.xcprivacy $(BUNDLE)/Contents/Resources/ 2>/dev/null || true; \
 	for b in $$(find -L $(BUILD_DIR) -maxdepth 1 -name '*.bundle' -type d); do cp -R "$$b" $(BUNDLE)/Contents/Resources/; done; \
 	TIMESTAMP_FLAG=$$(if [ -z "$(SUFFIX)" ]; then echo "--timestamp"; else echo "--timestamp=none"; fi); \
 	codesign --force --sign "$(CODESIGN_ID)" --entitlements $(ENTITLEMENTS) \
