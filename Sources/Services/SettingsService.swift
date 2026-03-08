@@ -6,6 +6,8 @@ extension Notification.Name {
   static let daemonConnectionChanged = Notification.Name("com.lidguard.daemonConnectionChanged")
   static let helperVersionChanged = Notification.Name("com.lidguard.helperVersionChanged")
   static let helperInstallCompleted = Notification.Name("com.lidguard.helperInstallCompleted")
+  static let helperStatusChanged = Notification.Name("com.lidguard.helperStatusChanged")
+  static let helperStatusRequested = Notification.Name("com.lidguard.helperStatusRequested")
 }
 
 final class SettingsService {

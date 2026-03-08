@@ -66,6 +66,7 @@ struct SettingsView: View {
   @State private var isDaemonConnected = false
   @State private var daemonVersion: String?
   @State private var helperNeedsUpdate = false
+  @State private var helperAccessibilityGranted = false
   @State private var isInstallingHelper = false
   @State private var helperInstallResult: Bool?
   @State private var selectedSection: SettingsSection? = .general
@@ -114,16 +115,24 @@ struct SettingsView: View {
       isDaemonConnected = TheftProtectionService.daemonConnected
       daemonVersion = TheftProtectionService.daemonVersion
       helperNeedsUpdate = TheftProtectionService.helperNeedsUpdate
+      helperAccessibilityGranted = TheftProtectionService.helperAccessibilityGranted
     }
     .onReceive(NotificationCenter.default.publisher(for: .daemonConnectionChanged)) { _ in
       isDaemonConnected = TheftProtectionService.daemonConnected
       daemonVersion = TheftProtectionService.daemonVersion
       helperNeedsUpdate = TheftProtectionService.helperNeedsUpdate
+      helperAccessibilityGranted = TheftProtectionService.helperAccessibilityGranted
       if isDaemonConnected { helperInstallResult = nil }
     }
     .onReceive(NotificationCenter.default.publisher(for: .helperVersionChanged)) { _ in
       daemonVersion = TheftProtectionService.daemonVersion
       helperNeedsUpdate = TheftProtectionService.helperNeedsUpdate
+    }
+    .onReceive(NotificationCenter.default.publisher(for: .helperStatusChanged)) { _ in
+      helperAccessibilityGranted = TheftProtectionService.helperAccessibilityGranted
+    }
+    .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+      NotificationCenter.default.post(name: .helperStatusRequested, object: nil)
     }
     .alert("Reset All Settings?", isPresented: $showingResetConfirmation) {
       Button("Cancel", role: .cancel) {}
@@ -300,12 +309,18 @@ struct SettingsView: View {
         Toggle("Lid close detection", isOn: $triggerLidClose)
         Toggle("Power disconnect detection", isOn: $triggerPowerDisconnect)
         helperToggle("Power button detection", isOn: $triggerPowerButton)
+          .onChange(of: triggerPowerButton) { _, newValue in
+            if newValue && !helperAccessibilityGranted {
+              triggerPowerButton = false
+              openAccessibilitySettings()
+            }
+          }
       } header: {
         Text("Theft Mode Triggers")
       } footer: {
-        if isDaemonConnected && triggerPowerButton {
+        if isDaemonConnected && !helperAccessibilityGranted {
           HStack(spacing: 4) {
-            Text("Requires Accessibility permission for the Helper.")
+            Text("Grant Accessibility permission to enable power button detection.")
             Button("Open Settings") { openAccessibilitySettings() }
               .buttonStyle(.link)
           }

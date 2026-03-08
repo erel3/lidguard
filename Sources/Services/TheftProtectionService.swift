@@ -31,6 +31,7 @@ final class TheftProtectionService {
   static private(set) var daemonConnected = false
   static private(set) var daemonVersion: String?
   static private(set) var helperNeedsUpdate = false
+  static var helperAccessibilityGranted = false
 
   weak var delegate: TheftProtectionDelegate?
 
@@ -98,6 +99,13 @@ final class TheftProtectionService {
         self?.bluetoothProximityService.stop()
       }
       self?.globalShortcutService.restart()
+    }
+
+    NotificationCenter.default.addObserver(
+      forName: .helperStatusRequested, object: nil, queue: .main
+    ) { [weak self] _ in
+      guard let self, self.daemonClient.isConnected else { return }
+      self.daemonClient.getStatus()
     }
 
     NotificationCenter.default.addObserver(
@@ -615,6 +623,7 @@ extension TheftProtectionService: DaemonIPCDelegate {
       ActivityLog.logAsync(.system, "Helper daemon needs update (v\(version ?? "?") < v\(Config.Daemon.minHelperVersion))")
       HelperInstallService.shared.showUpdateWindow(currentVersion: version)
     }
+    client.getStatus()
     // Re-sync state: if protection is active, re-send enables
     if state == .enabled || state == .enabledBluetooth || state == .theftMode {
       let settings = SettingsService.shared
@@ -631,9 +640,15 @@ extension TheftProtectionService: DaemonIPCDelegate {
   func daemonDidDisconnect(_ client: DaemonIPCClient) {
     TheftProtectionService.daemonConnected = false
     TheftProtectionService.daemonVersion = nil
+    TheftProtectionService.helperAccessibilityGranted = false
     NotificationCenter.default.post(name: .daemonConnectionChanged, object: nil)
     Logger.daemon.info("Disconnected from helper daemon")
     ActivityLog.logAsync(.system, "Helper daemon disconnected")
+  }
+
+  func daemonDidReceiveStatus(_ client: DaemonIPCClient, accessibilityGranted: Bool) {
+    TheftProtectionService.helperAccessibilityGranted = accessibilityGranted
+    NotificationCenter.default.post(name: .helperStatusChanged, object: nil)
   }
 
   private static func isHelperOutdated(_ version: String?) -> Bool {

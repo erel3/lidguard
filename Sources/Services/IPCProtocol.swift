@@ -18,5 +18,6 @@ struct IPCMessage: Codable {
   var pmset: Bool?
   var lockScreen: Bool?
   var powerButton: Bool?
+  var accessibilityGranted: Bool?
   var message: String?
 }

@@ -5,6 +5,7 @@ import os.log
 protocol DaemonIPCDelegate: AnyObject {
   func daemonDidConnect(_ client: DaemonIPCClient, version: String?)
   func daemonDidDisconnect(_ client: DaemonIPCClient)
+  func daemonDidReceiveStatus(_ client: DaemonIPCClient, accessibilityGranted: Bool)
   func daemonDidReceivePowerButtonPress(_ client: DaemonIPCClient)
 }
 
@@ -20,6 +21,7 @@ protocol DaemonIPC: AnyObject {
   func hideLockScreen()
   func enablePowerButton()
   func disablePowerButton()
+  func getStatus()
 }
 
 final class DaemonIPCClient: DaemonIPC {
@@ -101,6 +103,10 @@ final class DaemonIPCClient: DaemonIPC {
 
   func disablePowerButton() {
     send(IPCCommand(type: "disable_power_button"))
+  }
+
+  func getStatus() {
+    send(IPCCommand(type: "get_status"))
   }
 
   // MARK: - Connection
@@ -292,7 +298,12 @@ final class DaemonIPCClient: DaemonIPC {
       let pmsetOn = message.pmset ?? false
       let lockOn = message.lockScreen ?? false
       let powerOn = message.powerButton ?? false
-      Logger.daemon.info("Daemon status — pmset: \(pmsetOn), lockScreen: \(lockOn), powerButton: \(powerOn)")
+      let axGranted = message.accessibilityGranted ?? false
+      Logger.daemon.info("Daemon status — pmset: \(pmsetOn), lockScreen: \(lockOn), powerButton: \(powerOn), ax: \(axGranted)")
+      notifyMainThread { [weak self] in
+        guard let self else { return }
+        self.delegate?.daemonDidReceiveStatus(self, accessibilityGranted: axGranted)
+      }
 
     case "error":
       Logger.daemon.error("Daemon error: \(message.message ?? "unknown")")
