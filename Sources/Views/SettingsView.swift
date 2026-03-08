@@ -47,6 +47,11 @@ struct SettingsView: View {
   @State private var behaviorLidCloseSleep: Bool = true
   @State private var behaviorShutdownBlocking: Bool = true
   @State private var behaviorLockScreen: Bool = true
+  @State private var lockScreenOnTheftMode: Bool = false
+  @State private var lockScreenOnShortcut: Bool = false
+  @State private var lockScreenOnBluetoothArm: Bool = false
+  @State private var lockScreenOnTelegramEnable: Bool = false
+  @State private var biometricAuthEnabled: Bool = false
   @State private var behaviorAlarm: Bool = true
   @State private var behaviorAutoAlarm: Bool = false
   @State private var alarmVolume: Double = 100
@@ -183,6 +188,16 @@ struct SettingsView: View {
           }
       } header: {
         Text("Launch")
+      }
+
+      Section {
+        Toggle("Require Touch ID", isOn: $biometricAuthEnabled)
+      } header: {
+        Text("Security")
+      } footer: {
+        Text("Require Touch ID or password to disable protection, open settings, and quit.")
+          .font(.footnote)
+          .foregroundStyle(.secondary)
       }
 
       Section {
@@ -331,10 +346,11 @@ struct SettingsView: View {
 
       Section {
         KeyboardShortcuts.Recorder("Shortcut", name: .toggleProtection)
+        helperToggle("Lock screen when arming", isOn: $lockScreenOnShortcut)
       } header: {
         Text("Global Keyboard Shortcut")
       } footer: {
-        Text("Press the shortcut anywhere to enable protection and lock screen. Requires Input Monitoring permission.")
+        Text("Press the shortcut anywhere to toggle protection. Requires Input Monitoring permission.")
           .font(.footnote)
           .foregroundStyle(.secondary)
       }
@@ -359,28 +375,31 @@ struct SettingsView: View {
 
       Section {
         Toggle("Shutdown blocking", isOn: $behaviorShutdownBlocking)
-        helperToggle("Lock screen message", isOn: $behaviorLockScreen)
-          .onChange(of: behaviorLockScreen) { _, newValue in
-            if newValue && isDaemonConnected {
-              requestContactsAndPopulate()
+        helperToggle("Lock screen on theft mode", isOn: $lockScreenOnTheftMode)
+        if lockScreenOnTheftMode {
+          helperToggle("Lock screen message", isOn: $behaviorLockScreen)
+            .onChange(of: behaviorLockScreen) { _, newValue in
+              if newValue && isDaemonConnected {
+                requestContactsAndPopulate()
+              }
             }
-          }
-        if behaviorLockScreen {
-          LabeledContent("Name") {
-            TextField("", text: $contactName)
-              .textFieldStyle(.plain)
-          }
-          LabeledContent("Phone") {
-            TextField("", text: $contactPhone)
-              .textFieldStyle(.plain)
-          }
-          LabeledContent {
-            Button("Retrieve from Contacts") {
-              retrieveFromContacts()
+          if behaviorLockScreen {
+            LabeledContent("Name") {
+              TextField("", text: $contactName)
+                .textFieldStyle(.plain)
             }
-            .buttonStyle(.borderless)
-          } label: {
-            EmptyView()
+            LabeledContent("Phone") {
+              TextField("", text: $contactPhone)
+                .textFieldStyle(.plain)
+            }
+            LabeledContent {
+              Button("Retrieve from Contacts") {
+                retrieveFromContacts()
+              }
+              .buttonStyle(.borderless)
+            } label: {
+              EmptyView()
+            }
           }
         }
       } header: {
@@ -427,6 +446,9 @@ struct SettingsView: View {
     Form {
       Section {
         Toggle("Enable Bluetooth auto-arm", isOn: $bluetoothAutoArmEnabled)
+        if bluetoothAutoArmEnabled {
+          helperToggle("Lock screen when auto-arming", isOn: $lockScreenOnBluetoothArm)
+        }
       } header: {
         Text("Auto-Arm")
       } footer: {
@@ -484,6 +506,7 @@ struct SettingsView: View {
             TextField("", text: $telegramChatId)
               .textFieldStyle(.plain)
           }
+          helperToggle("Lock screen on /enable command", isOn: $lockScreenOnTelegramEnable)
         }
       } header: {
         Text("Telegram")
@@ -519,6 +542,11 @@ struct SettingsView: View {
     behaviorLidCloseSleep = settings.behaviorLidCloseSleep
     behaviorShutdownBlocking = settings.behaviorShutdownBlocking
     behaviorLockScreen = settings.behaviorLockScreen
+    lockScreenOnTheftMode = settings.lockScreenOnTheftMode
+    lockScreenOnShortcut = settings.lockScreenOnShortcut
+    lockScreenOnBluetoothArm = settings.lockScreenOnBluetoothArm
+    lockScreenOnTelegramEnable = settings.lockScreenOnTelegramEnable
+    biometricAuthEnabled = settings.biometricAuthEnabled
     behaviorAlarm = settings.behaviorAlarm
     offlineSirenEnabled = settings.offlineSirenEnabled
     bluetoothAutoArmEnabled = settings.bluetoothAutoArmEnabled
@@ -543,6 +571,11 @@ struct SettingsView: View {
     settings.behaviorLidCloseSleep = behaviorLidCloseSleep
     settings.behaviorShutdownBlocking = behaviorShutdownBlocking
     settings.behaviorLockScreen = behaviorLockScreen
+    settings.lockScreenOnTheftMode = lockScreenOnTheftMode
+    settings.lockScreenOnShortcut = lockScreenOnShortcut
+    settings.lockScreenOnBluetoothArm = lockScreenOnBluetoothArm
+    settings.lockScreenOnTelegramEnable = lockScreenOnTelegramEnable
+    settings.biometricAuthEnabled = biometricAuthEnabled
     settings.behaviorAlarm = behaviorAlarm
     settings.offlineSirenEnabled = offlineSirenEnabled
 

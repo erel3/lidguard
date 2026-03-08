@@ -223,7 +223,9 @@ final class TheftProtectionService {
 
     state = .enabledBluetooth
 
-    self.lockScreen()
+    if SettingsService.shared.lockScreenOnBluetoothArm {
+      self.lockScreen()
+    }
     startMonitors()
     Logger.theft.info("Protection enabled via Bluetooth auto-arm")
     ActivityLog.logAsync(.bluetooth, "Protection auto-armed (all devices out of range)")
@@ -284,10 +286,12 @@ final class TheftProtectionService {
     Logger.theft.warning("THEFT MODE ACTIVATED - \(trigger.description)")
     ActivityLog.logAsync(.theft, "THEFT MODE ACTIVATED - \(trigger.description)")
 
-    // Lock screen + daemon overlay
+    // System lock screen + overlay message
     let settings = SettingsService.shared
-    if settings.behaviorLockScreen {
+    if settings.lockScreenOnTheftMode {
       lockScreen()
+    }
+    if settings.lockScreenOnTheftMode && settings.behaviorLockScreen {
       let name = settings.contactName ?? ""
       let phone = settings.contactPhone ?? ""
       daemonClient.showLockScreen(contactName: name, contactPhone: phone, message: "STOLEN DEVICE")
@@ -531,7 +535,7 @@ extension TheftProtectionService: TelegramCommandDelegate {
     case .status:
       sendStatus()
     case .enable:
-      enableProtection(lockScreen: true)
+      enableProtection(lockScreen: SettingsService.shared.lockScreenOnTelegramEnable)
     case .disable:
       disableProtection(remote: true)
     case .alarm:
@@ -615,7 +619,7 @@ extension TheftProtectionService: DaemonIPCDelegate {
       let settings = SettingsService.shared
       if settings.behaviorLidCloseSleep { client.enablePmset() }
       if settings.triggerPowerButton { client.enablePowerButton() }
-      if state == .theftMode && settings.behaviorLockScreen {
+      if state == .theftMode && settings.lockScreenOnTheftMode && settings.behaviorLockScreen {
         let name = settings.contactName ?? ""
         let phone = settings.contactPhone ?? ""
         client.showLockScreen(contactName: name, contactPhone: phone, message: "STOLEN DEVICE")

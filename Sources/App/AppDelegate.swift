@@ -151,7 +151,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     menu.addItem(.separator())
 
-    let settingsItem = NSMenuItem(title: "Settings... (Touch ID)", action: #selector(openSettings), keyEquivalent: ",")
+    let settingsItem = NSMenuItem(title: "Settings...", action: #selector(openSettings), keyEquivalent: ",")
     settingsItem.target = self
     settingsItem.image = menuSymbol("gearshape", color: .secondaryLabelColor)
     menu.addItem(settingsItem)
@@ -167,7 +167,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     menu.addItem(.separator())
 
-    let quitItem = NSMenuItem(title: "Quit (Touch ID)", action: #selector(quitApp), keyEquivalent: "q")
+    let quitItem = NSMenuItem(title: "Quit", action: #selector(quitApp), keyEquivalent: "q")
     quitItem.target = self
     quitItem.image = menuSymbol("power", color: .secondaryLabelColor)
     menu.addItem(quitItem)
@@ -486,7 +486,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
   @objc private func toggleProtection() {
     switch theftProtection.state {
     case .disabled:
-      theftProtection.enableProtection(lockScreen: true)
+      theftProtection.enableProtection()
 
     case .enabled, .enabledBluetooth:
       authService.authenticate(reason: "Authenticate to disable protection") { [weak self] success in
@@ -594,7 +594,7 @@ extension AppDelegate: TheftProtectionDelegate {
   func theftProtectionShortcutTriggered(_ service: TheftProtectionService) {
     switch service.state {
     case .disabled:
-      service.enableProtection(lockScreen: true)
+      service.enableProtection(lockScreen: SettingsService.shared.lockScreenOnShortcut)
     case .enabled, .enabledBluetooth:
       authService.authenticate(reason: "Authenticate to disable protection") { [weak self] success in
         guard success else { return }

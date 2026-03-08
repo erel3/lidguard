@@ -22,7 +22,7 @@ final class SettingsWindowController {
     newWindow.title = "Settings"
     newWindow.titlebarAppearsTransparent = true
     newWindow.toolbarStyle = .unified
-    newWindow.styleMask = [.titled, .closable, .fullSizeContentView]
+    newWindow.styleMask = [.titled, .closable]
     newWindow.isReleasedWhenClosed = false
     newWindow.delegate = WindowDelegate.shared
 

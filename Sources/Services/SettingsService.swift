@@ -34,6 +34,11 @@ final class SettingsService {
     static let behaviorLidCloseSleep = "lidguard.behaviorLidCloseSleep"
     static let behaviorShutdownBlocking = "lidguard.behaviorShutdownBlocking"
     static let behaviorLockScreen = "lidguard.behaviorLockScreen"
+    static let lockScreenOnTheftMode = "lidguard.lockScreenOnTheftMode"
+    static let lockScreenOnShortcut = "lidguard.lockScreenOnShortcut"
+    static let lockScreenOnTelegramEnable = "lidguard.lockScreenOnTelegramEnable"
+    static let lockScreenOnBluetoothArm = "lidguard.lockScreenOnBluetoothArm"
+    static let biometricAuthEnabled = "lidguard.biometricAuthEnabled"
     static let behaviorAlarm = "lidguard.behaviorAlarm"
     static let behaviorAutoAlarm = "lidguard.behaviorAutoAlarm"
     static let alarmVolume = "lidguard.alarmVolume"
@@ -170,6 +175,31 @@ final class SettingsService {
     set { defaults.set(newValue, forKey: Keys.behaviorLockScreen) }
   }
 
+  var lockScreenOnTheftMode: Bool {
+    get { defaults.object(forKey: Keys.lockScreenOnTheftMode) as? Bool ?? false }
+    set { defaults.set(newValue, forKey: Keys.lockScreenOnTheftMode) }
+  }
+
+  var lockScreenOnShortcut: Bool {
+    get { defaults.object(forKey: Keys.lockScreenOnShortcut) as? Bool ?? false }
+    set { defaults.set(newValue, forKey: Keys.lockScreenOnShortcut) }
+  }
+
+  var lockScreenOnBluetoothArm: Bool {
+    get { defaults.object(forKey: Keys.lockScreenOnBluetoothArm) as? Bool ?? false }
+    set { defaults.set(newValue, forKey: Keys.lockScreenOnBluetoothArm) }
+  }
+
+  var lockScreenOnTelegramEnable: Bool {
+    get { defaults.object(forKey: Keys.lockScreenOnTelegramEnable) as? Bool ?? false }
+    set { defaults.set(newValue, forKey: Keys.lockScreenOnTelegramEnable) }
+  }
+
+  var biometricAuthEnabled: Bool {
+    get { defaults.object(forKey: Keys.biometricAuthEnabled) as? Bool ?? false }
+    set { defaults.set(newValue, forKey: Keys.biometricAuthEnabled) }
+  }
+
   var behaviorAlarm: Bool {
     get { defaults.object(forKey: Keys.behaviorAlarm) as? Bool ?? true }
     set { defaults.set(newValue, forKey: Keys.behaviorAlarm) }
@@ -274,6 +304,11 @@ final class SettingsService {
     defaults.removeObject(forKey: Keys.behaviorLidCloseSleep)
     defaults.removeObject(forKey: Keys.behaviorShutdownBlocking)
     defaults.removeObject(forKey: Keys.behaviorLockScreen)
+    defaults.removeObject(forKey: Keys.lockScreenOnTheftMode)
+    defaults.removeObject(forKey: Keys.lockScreenOnShortcut)
+    defaults.removeObject(forKey: Keys.lockScreenOnBluetoothArm)
+    defaults.removeObject(forKey: Keys.lockScreenOnTelegramEnable)
+    defaults.removeObject(forKey: Keys.biometricAuthEnabled)
     defaults.removeObject(forKey: Keys.behaviorAlarm)
     defaults.removeObject(forKey: Keys.behaviorAutoAlarm)
     defaults.removeObject(forKey: Keys.alarmVolume)
