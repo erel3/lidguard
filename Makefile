@@ -7,24 +7,29 @@ CODESIGN_ID ?= Developer ID Application: Andrey Kim (73R36N2A46)
 CODESIGN_REQ ?= designated => anchor apple generic and certificate leaf[subject.OU] = "73R36N2A46"
 NOTARIZE_PROFILE ?= Notarize
 
-.PHONY: build build-appstore run run-appstore run-debug install release clean version icon lint
+.PHONY: compile compile-appstore build build-appstore run run-appstore run-debug install release release-appstore clean version icon lint
 
 VERSION := $(shell cat $(VERSION_FILE) 2>/dev/null || echo "1.0.0")
 
-build:
+compile:
 	swift build -c release
 
-build-appstore:
+compile-appstore:
 	swift build -c release -Xswiftc -DAPPSTORE
 
-# Dev: bundle with -dev suffix and open
-run: build
+# Build: compile + bundle (dev)
+build: compile
 	@$(MAKE) _bundle SUFFIX=-dev
+
+build-appstore: compile-appstore
+	@$(MAKE) _bundle SUFFIX=-dev ENTITLEMENTS=LidGuard-AppStore.entitlements
+
+# Dev: build and open
+run: build
 	open $(BUNDLE)
 
-# Dev: bundle App Store edition with -dev suffix and open
+# Dev: build App Store edition and open
 run-appstore: build-appstore
-	@$(MAKE) _bundle SUFFIX=-dev ENTITLEMENTS=LidGuard-AppStore.entitlements
 	open $(BUNDLE)
 
 # Debug: build debug binary and run directly (no .app bundle)
@@ -46,7 +51,7 @@ install:
 release:
 	@test -f RELEASE_NOTES.md || (echo "Error: RELEASE_NOTES.md is required. Write release notes first." && exit 1)
 	@$(MAKE) _bump
-	@$(MAKE) build
+	@$(MAKE) compile
 	@$(MAKE) _bundle SUFFIX=
 	@$(MAKE) _notarize
 	@VERSION=$$(cat $(VERSION_FILE)); \
@@ -60,6 +65,12 @@ release:
 		--title "$$TITLE" --notes-file RELEASE_NOTES.md && \
 	rm -f RELEASE_NOTES.md && \
 	echo "Released v$$VERSION"
+
+# App Store: build and bundle for upload via Transporter
+release-appstore: compile-appstore
+	@$(MAKE) _bundle SUFFIX= ENTITLEMENTS=LidGuard-AppStore.entitlements
+	@echo "App Store build ready at $(BUNDLE)"
+	@echo "Upload via Transporter app"
 
 # Internal: create .app bundle with optional SUFFIX (-dev or empty) and ENTITLEMENTS
 ENTITLEMENTS ?= LidGuard.entitlements

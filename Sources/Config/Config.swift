@@ -51,10 +51,9 @@ enum Config {
   enum Daemon {
     static let host = "127.0.0.1"
     static let port: UInt16 = 51423
-    static let secretPath = "Library/Application Support/LidGuard/.ipc-secret"
     static let reconnectBaseDelay: TimeInterval = 2
     static let reconnectMaxDelay: TimeInterval = 30
-    static let minHelperVersion = "1.0.4"
+    static let minHelperVersion = "1.0.5"
     static let helperInstallDir = "Library/Application Support/LidGuard"
     static let helperBinaryName = "lidguard-helper"
     static let helperReleasesURL = "https://api.github.com/repos/Erel3/lidguard-helper/releases/latest"

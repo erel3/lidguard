@@ -300,18 +300,17 @@ struct SettingsView: View {
         Toggle("Lid close detection", isOn: $triggerLidClose)
         Toggle("Power disconnect detection", isOn: $triggerPowerDisconnect)
         helperToggle("Power button detection", isOn: $triggerPowerButton)
-          .onChange(of: triggerPowerButton) { _, newValue in
-            if newValue && isDaemonConnected {
-              openAccessibilitySettings()
-            }
-          }
       } header: {
         Text("Theft Mode Triggers")
       } footer: {
         if isDaemonConnected && triggerPowerButton {
-          Text("Grant Accessibility permission to lidguard-helper in System Settings.")
-            .font(.footnote)
-            .foregroundStyle(.secondary)
+          HStack(spacing: 4) {
+            Text("Requires Accessibility permission for the Helper.")
+            Button("Open Settings") { openAccessibilitySettings() }
+              .buttonStyle(.link)
+          }
+          .font(.footnote)
+          .foregroundStyle(.secondary)
         }
       }
 

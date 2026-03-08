@@ -177,24 +177,8 @@ final class DaemonIPCClient: DaemonIPC {
   // MARK: - Auth
 
   private func authenticate() {
-    guard let secret = readSecret() else {
-      Logger.daemon.error("Cannot read IPC secret — disconnecting")
-      tearDown()
-      return
-    }
-    let cmd = IPCCommand(type: "auth", secret: secret)
+    let cmd = IPCCommand(type: "auth")
     sendImmediate(cmd)
-  }
-
-  private func readSecret() -> String? {
-    let home = FileManager.default.homeDirectoryForCurrentUser
-    let path = home.appendingPathComponent(Config.Daemon.secretPath)
-    guard let data = try? Data(contentsOf: path),
-          let secret = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
-          !secret.isEmpty else {
-      return nil
-    }
-    return secret
   }
 
   // MARK: - Send
@@ -293,7 +277,7 @@ final class DaemonIPCClient: DaemonIPC {
           self.delegate?.daemonDidConnect(self, version: version)
         }
       } else {
-        Logger.daemon.error("Authentication failed — wrong secret?")
+        Logger.daemon.error("Authentication failed — code signing verification rejected")
         shouldReconnect = false
         tearDown()
       }

@@ -103,7 +103,13 @@ final class TheftProtectionService {
     NotificationCenter.default.addObserver(
       forName: .helperInstallCompleted, object: nil, queue: .main
     ) { [weak self] _ in
-      self?.daemonClient.reconnectNow()
+      // Retry a few times — helper may not be running yet after manual install
+      for delay in [0.0, 2.0, 5.0, 10.0] {
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+          guard let self, !self.daemonClient.isConnected else { return }
+          self.daemonClient.reconnectNow()
+        }
+      }
     }
   }
 

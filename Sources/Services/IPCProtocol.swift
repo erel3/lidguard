@@ -4,7 +4,6 @@ import Foundation
 
 struct IPCCommand: Codable {
   let type: String
-  var secret: String?
   var contactName: String?
   var contactPhone: String?
   var message: String?
