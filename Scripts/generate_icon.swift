@@ -273,9 +273,19 @@ func generateICNS() {
   appStoreIcon.draw(in: NSRect(x: 0, y: 0, width: 1024, height: 1024))
   NSGraphicsContext.restoreGraphicsState()
   if let pngData = opaqueRep.representation(using: .png, properties: [:]) {
-    let appStoreIconPath = resourcesDir.appendingPathComponent("AppIcon.png")
+    let appStoreIconPath = resourcesDir.appendingPathComponent("AppStoreIcon.png")
     try! pngData.write(to: appStoreIconPath)
-    print("Generated AppIcon.png (1024x1024, no alpha) for App Store Connect")
+    print("Generated AppStoreIcon.png (1024x1024, no alpha) for App Store Connect")
+
+    // Also generate AppIcon.png (with alpha) for README
+    let readmeIcon = drawIcon(size: 256)
+    if let tiffData = readmeIcon.tiffRepresentation,
+       let rep = NSBitmapImageRep(data: tiffData),
+       let readmePng = rep.representation(using: .png, properties: [:]) {
+      let readmeIconPath = resourcesDir.appendingPathComponent("AppIcon.png")
+      try! readmePng.write(to: readmeIconPath)
+      print("Generated AppIcon.png (256x256, with alpha) for README")
+    }
   }
 
   // Cleanup

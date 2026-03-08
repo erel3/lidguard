@@ -28,5 +28,7 @@
     <string>LidGuard reads contact info for lock screen message</string>
     <key>NSHumanReadableCopyright</key>
     <string>Copyright © 2026 Andrey Kim. All rights reserved.</string>
+    <key>ITSAppUsesNonExemptEncryption</key>
+    <false/>
 </dict>
 </plist>
