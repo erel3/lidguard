@@ -1,6 +1,7 @@
 APP_NAME = LidGuard
 BUNDLE = dist/$(APP_NAME).app
-BUILD_DIR = .build/release
+XCODEBUILD_DIR = .xcodebuild
+BUILD_DIR = $(XCODEBUILD_DIR)/Build/Products/Release
 VERSION_FILE = VERSION
 BUMP ?= patch
 CODESIGN_ID ?= Developer ID Application: Andrey Kim (73R36N2A46)
@@ -12,10 +13,13 @@ NOTARIZE_PROFILE ?= Notarize
 VERSION := $(shell cat $(VERSION_FILE) 2>/dev/null || echo "1.0.0")
 
 compile:
-	swift build -c release
+	xcodebuild -scheme $(APP_NAME) -configuration Release -destination 'platform=macOS' \
+		-derivedDataPath $(XCODEBUILD_DIR) build 2>&1 | tail -1
 
 compile-appstore:
-	swift build -c release -Xswiftc -DAPPSTORE
+	xcodebuild -scheme $(APP_NAME) -configuration Release -destination 'platform=macOS' \
+		-derivedDataPath $(XCODEBUILD_DIR) build \
+		SWIFT_ACTIVE_COMPILATION_CONDITIONS='APPSTORE' 2>&1 | tail -1
 
 # Build: compile + bundle (dev)
 build: compile
@@ -84,7 +88,7 @@ _bundle:
 	    -e "s/<string>1</<string>$$(echo $$VERSION | tr -d '.-dev')</" \
 	    Info.plist > $(BUNDLE)/Contents/Info.plist; \
 	cp Resources/AppIcon.icns $(BUNDLE)/Contents/Resources/ 2>/dev/null || true; \
-	cp -r $(BUILD_DIR)/*.bundle $(BUNDLE)/Contents/Resources/ 2>/dev/null || true; \
+	for b in $$(find -L $(BUILD_DIR) -maxdepth 1 -name '*.bundle' -type d); do cp -R "$$b" $(BUNDLE)/Contents/Resources/; done; \
 	TIMESTAMP_FLAG=$$(if [ -z "$(SUFFIX)" ]; then echo "--timestamp"; else echo "--timestamp=none"; fi); \
 	codesign --force --sign "$(CODESIGN_ID)" --entitlements $(ENTITLEMENTS) \
 		-o runtime $$TIMESTAMP_FLAG \
@@ -122,7 +126,7 @@ icon:
 	swift Scripts/generate_icon.swift
 
 clean:
-	rm -rf .build dist
+	rm -rf .build .xcodebuild dist
 
 version:
 	@cat $(VERSION_FILE)

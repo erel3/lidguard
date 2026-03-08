@@ -286,7 +286,7 @@ final class HelperInstallService {
     window.contentView = NSHostingView(rootView: view)
     window.center()
     window.isReleasedWhenClosed = false
-    window.level = .floating
+    window.level = .normal
     window.hidesOnDeactivate = false
     window.makeKeyAndOrderFront(nil)
     NSApp.activate(ignoringOtherApps: true)

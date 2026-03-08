@@ -3,6 +3,7 @@
 .swiftpm/
 
 # Build artifacts
+.xcodebuild/
 dist/
 *.app
 *.zip
