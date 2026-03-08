@@ -195,11 +195,7 @@ final class TheftProtectionService {
     state = .enabled
 
     if lockScreen {
-      if Thread.isMainThread {
-        self.lockScreen()
-      } else {
-        DispatchQueue.main.async { self.lockScreen() }
-      }
+      self.lockScreen()
     }
     startMonitors()
     Logger.theft.info("Protection enabled")
@@ -227,11 +223,7 @@ final class TheftProtectionService {
 
     state = .enabledBluetooth
 
-    if Thread.isMainThread {
-      self.lockScreen()
-    } else {
-      DispatchQueue.main.async { self.lockScreen() }
-    }
+    self.lockScreen()
     startMonitors()
     Logger.theft.info("Protection enabled via Bluetooth auto-arm")
     ActivityLog.logAsync(.bluetooth, "Protection auto-armed (all devices out of range)")
@@ -512,13 +504,7 @@ final class TheftProtectionService {
   }
 
   private func lockScreen() {
-    // Use private Login framework API
-    let libHandle = dlopen("/System/Library/PrivateFrameworks/login.framework/Versions/Current/login", RTLD_LAZY)
-    guard libHandle != nil else { return }
-    guard let sym = dlsym(libHandle, "SACLockScreenImmediate") else { return }
-    typealias LockFunction = @convention(c) () -> Void
-    let lock = unsafeBitCast(sym, to: LockFunction.self)
-    lock()
+    daemonClient.lockScreen()
   }
 }
 

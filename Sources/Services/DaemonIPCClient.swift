@@ -17,6 +17,7 @@ protocol DaemonIPC: AnyObject {
   func disconnect()
   func enablePmset()
   func disablePmset()
+  func lockScreen()
   func showLockScreen(contactName: String, contactPhone: String, message: String)
   func hideLockScreen()
   func enablePowerButton()
@@ -82,6 +83,10 @@ final class DaemonIPCClient: DaemonIPC {
 
   func disablePmset() {
     send(IPCCommand(type: "disable_pmset"))
+  }
+
+  func lockScreen() {
+    send(IPCCommand(type: "lock_screen"))
   }
 
   func showLockScreen(contactName: String, contactPhone: String, message: String) {
