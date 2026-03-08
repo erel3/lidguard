@@ -157,10 +157,13 @@ final class HelperInstallService {
         unloadDaemon()
         Thread.sleep(forTimeInterval: 1)
 
-        // Install PKG to user domain
+        // Install PKG with admin privileges (postinstall needs root for sudoers + chown)
+        let escapedPath = pkgPath.path.replacingOccurrences(of: "\\", with: "\\\\")
+          .replacingOccurrences(of: "\"", with: "\\\"")
+        let script = "do shell script \"/usr/sbin/installer -pkg \\\"\(escapedPath)\\\" -target /\" with administrator privileges"
         let installer = Process()
-        installer.executableURL = URL(fileURLWithPath: "/usr/sbin/installer")
-        installer.arguments = ["-pkg", pkgPath.path, "-target", "CurrentUserHomeDirectory"]
+        installer.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+        installer.arguments = ["-e", script]
         installer.standardOutput = FileHandle.nullDevice
         installer.standardError = FileHandle.nullDevice
         try installer.run()
