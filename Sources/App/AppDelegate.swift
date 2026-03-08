@@ -24,6 +24,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     theftProtection.delegate = self
     theftProtection.start()
 
+    NotificationCenter.default.addObserver(
+      forName: .bluetoothSettingsChanged, object: nil, queue: .main
+    ) { [weak self] _ in
+      self?.updateStatus()
+    }
+
     #if APPSTORE
     ReceiptValidation.validateOrExit()
     #endif
