@@ -67,6 +67,7 @@ struct SettingsView: View {
   @State private var telegramBotToken: String = ""
   @State private var telegramChatId: String = ""
   @State private var telegramEnabled: Bool = true
+  @State private var verificationController: TelegramVerificationWindowController?
 
   @State private var isDaemonConnected = false
   @State private var daemonVersion: String?
@@ -503,8 +504,20 @@ struct SettingsView: View {
               .textFieldStyle(.plain)
           }
           LabeledContent("Chat ID") {
-            TextField("", text: $telegramChatId)
-              .textFieldStyle(.plain)
+            if telegramChatId.isEmpty {
+              Button("Connect") {
+                connectTelegram()
+              }
+              .disabled(telegramBotToken.isEmpty)
+            } else {
+              HStack {
+                Text(telegramChatId)
+                  .foregroundStyle(.secondary)
+                Button("Disconnect") {
+                  telegramChatId = ""
+                }
+              }
+            }
           }
           helperToggle("Lock screen on /enable command", isOn: $lockScreenOnTelegramEnable)
         }
@@ -555,11 +568,17 @@ struct SettingsView: View {
   }
 
   private func saveSettings() {
+    verificationController?.close()
+    verificationController = nil
     settings.contactName = contactName.isEmpty ? nil : contactName
     settings.contactPhone = contactPhone.isEmpty ? nil : contactPhone
+    let telegramChanged = settings.telegramBotToken != (telegramBotToken.isEmpty ? nil : telegramBotToken)
+      || settings.telegramChatId != (telegramChatId.isEmpty ? nil : telegramChatId)
+      || settings.telegramEnabled != telegramEnabled
     settings.telegramBotToken = telegramBotToken.isEmpty ? nil : telegramBotToken
     settings.telegramChatId = telegramChatId.isEmpty ? nil : telegramChatId
     settings.telegramEnabled = telegramEnabled
+    if telegramChanged { NotificationCenter.default.post(name: .telegramSettingsChanged, object: nil) }
     settings.alarmSound = selectedAlarmSound
     settings.behaviorAutoAlarm = behaviorAutoAlarm
     settings.alarmVolume = Int(alarmVolume)
@@ -598,6 +617,16 @@ struct SettingsView: View {
     ActivityLog.logAsync(.system, "Settings saved")
   }
 
+  private func connectTelegram() {
+    guard verificationController == nil else { return }
+    let controller = TelegramVerificationWindowController()
+    verificationController = controller
+    controller.show(botToken: telegramBotToken) { chatId in
+      self.verificationController = nil
+      if let chatId = chatId { self.telegramChatId = chatId }
+    }
+  }
+
   private func resetSettings() {
     settings.resetAll()
     loadSettings()
@@ -627,48 +656,19 @@ struct SettingsView: View {
 
   private func requestContactsAndPopulate() {
     settings.requestContactsAccess { granted in
-      if granted {
-        DispatchQueue.main.async {
-          if contactName.isEmpty {
-            let name = NSFullUserName()
-            if !name.isEmpty { contactName = name }
-          }
-          if contactPhone.isEmpty, let phone = getMyCardPhone() {
-            contactPhone = phone
-          }
-        }
-      }
+      if granted { DispatchQueue.main.async {
+        if contactName.isEmpty { let n = NSFullUserName(); if !n.isEmpty { self.contactName = n } }
+        if contactPhone.isEmpty, let p = contactsPhoneNumber() { self.contactPhone = p }
+      } }
     }
   }
 
   private func retrieveFromContacts() {
-    let ownerName = NSFullUserName()
-    if !ownerName.isEmpty {
-      contactName = ownerName
-    }
-
+    let name = NSFullUserName()
+    if !name.isEmpty { contactName = name }
     settings.requestContactsAccess { granted in
-      if granted {
-        DispatchQueue.main.async {
-          if let phone = getMyCardPhone() {
-            contactPhone = phone
-          }
-        }
-      }
+      if granted { DispatchQueue.main.async { if let p = contactsPhoneNumber() { self.contactPhone = p } } }
     }
-  }
-
-  private func getMyCardPhone() -> String? {
-    let store = CNContactStore()
-    guard CNContactStore.authorizationStatus(for: .contacts) == .authorized else {
-      return nil
-    }
-    let keys: [CNKeyDescriptor] = [CNContactPhoneNumbersKey as CNKeyDescriptor]
-    guard let me = try? store.unifiedMeContactWithKeys(toFetch: keys) else {
-      return nil
-    }
-    let mobile = me.phoneNumbers.first { $0.label == CNLabelPhoneNumberMobile }
-    return mobile?.value.stringValue ?? me.phoneNumbers.first?.value.stringValue
   }
 
   private func helperToggle(_ title: String, isOn: Binding<Bool>) -> some View {
@@ -684,4 +684,13 @@ struct SettingsView: View {
     }
     .disabled(!isDaemonConnected)
   }
+}
+
+private func contactsPhoneNumber() -> String? {
+  let store = CNContactStore()
+  guard CNContactStore.authorizationStatus(for: .contacts) == .authorized else { return nil }
+  let keys: [CNKeyDescriptor] = [CNContactPhoneNumbersKey as CNKeyDescriptor]
+  guard let me = try? store.unifiedMeContactWithKeys(toFetch: keys) else { return nil }
+  let mobile = me.phoneNumbers.first { $0.label == CNLabelPhoneNumberMobile }
+  return mobile?.value.stringValue ?? me.phoneNumbers.first?.value.stringValue
 }

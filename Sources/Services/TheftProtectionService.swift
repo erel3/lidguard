@@ -102,6 +102,13 @@ final class TheftProtectionService {
     }
 
     NotificationCenter.default.addObserver(
+      forName: .telegramSettingsChanged, object: nil, queue: .main
+    ) { [weak self] _ in
+      self?.commandService.stop()
+      self?.commandService.start()
+    }
+
+    NotificationCenter.default.addObserver(
       forName: .helperStatusRequested, object: nil, queue: .main
     ) { [weak self] _ in
       guard let self, self.daemonClient.isConnected else { return }
