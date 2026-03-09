@@ -105,14 +105,19 @@ _bundle:
 	cp PrivacyInfo.xcprivacy $(BUNDLE)/Contents/Resources/ 2>/dev/null || true; \
 	for b in $$(find -L $(BUILD_DIR) -maxdepth 1 -name '*.bundle' -type d); do cp -R "$$b" $(BUNDLE)/Contents/Resources/; done; \
 	TIMESTAMP_FLAG=$$(if [ -z "$(SUFFIX)" ]; then echo "--timestamp"; else echo "--timestamp=none"; fi); \
-	REQ_FLAG=$$(if [ "$(CODESIGN_REQ)" != "" ]; then echo "-r=$(CODESIGN_REQ)"; fi); \
 	for b in $$(find $(BUNDLE)/Contents/Resources -name '*.bundle' -type d); do \
 		codesign --force --sign "$(CODESIGN_ID)" -o runtime $$TIMESTAMP_FLAG "$$b"; \
 	done; \
-	codesign --force --sign "$(CODESIGN_ID)" --entitlements $(ENTITLEMENTS) \
-		-o runtime $$TIMESTAMP_FLAG \
-		$$REQ_FLAG \
-		$(BUNDLE); \
+	if [ -n '$(CODESIGN_REQ)' ]; then \
+		codesign --force --sign "$(CODESIGN_ID)" --entitlements $(ENTITLEMENTS) \
+			-o runtime $$TIMESTAMP_FLAG \
+			-r='$(CODESIGN_REQ)' \
+			$(BUNDLE); \
+	else \
+		codesign --force --sign "$(CODESIGN_ID)" --entitlements $(ENTITLEMENTS) \
+			-o runtime $$TIMESTAMP_FLAG \
+			$(BUNDLE); \
+	fi; \
 	echo "Built: $(BUNDLE) v$$VERSION"
 
 _notarize:
