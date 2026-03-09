@@ -57,7 +57,7 @@ enum Config {
     static let helperInstallDir = "Library/Application Support/LidGuard"
     static let helperBinaryName = "lidguard-helper"
     static let helperReleasesURL = "https://api.github.com/repos/Erel3/lidguard-helper/releases/latest"
-    static let helperBrowserURL = "https://github.com/Erel3/lidguard-helper/releases"
+    static let helperBrowserURL = "https://erel3.github.io/lidguard-page/#helper"
     static let launchAgentLabel = "com.lidguard.helper"
   }
 
