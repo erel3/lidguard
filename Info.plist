@@ -20,6 +20,8 @@
     <false/>
     <key>LSMinimumSystemVersion</key>
     <string>14.0</string>
+    <key>LSApplicationCategoryType</key>
+    <string>public.app-category.utilities</string>
     <key>NSBluetoothAlwaysUsageDescription</key>
     <string>LidGuard needs Bluetooth for proximity detection</string>
     <key>NSLocationWhenInUseUsageDescription</key>
