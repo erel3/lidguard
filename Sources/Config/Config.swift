@@ -29,7 +29,7 @@ enum Config {
 
   #if APPSTORE
   enum AppStore {
-    static let appId = "XXXXXXXXXX"  // Fill after App Store submission
+    static let appId = "6760257102"
     static let lookupURL = "https://itunes.apple.com/lookup?bundleId=com.akim.lidguard"
     static let autoCheckInterval: TimeInterval = 24 * 60 * 60  // 24 hours
   }
