@@ -355,6 +355,9 @@ struct SettingsView: View {
           .font(.footnote)
           .foregroundStyle(.secondary)
       }
+
+      Section { Text("💡 Right-click the menu bar icon to quickly toggle protection.")
+          .font(.footnote).foregroundStyle(.secondary) }
     }
     .formStyle(.grouped)
   }
