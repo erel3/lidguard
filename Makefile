@@ -9,6 +9,7 @@ CODESIGN_ID_APPSTORE ?= Apple Distribution: Andrey Kim (73R36N2A46)
 INSTALLER_ID_APPSTORE ?= 3rd Party Mac Developer Installer: Andrey Kim (73R36N2A46)
 CODESIGN_REQ ?= designated => anchor apple generic and certificate leaf[subject.OU] = "73R36N2A46"
 NOTARIZE_PROFILE ?= Notarize
+APPSTORE_PROFILE ?= $(HOME)/Library/Developer/Xcode/UserData/Provisioning Profiles/c2011cfe-9048-4a72-90ce-bece0703bc92.provisionprofile
 
 .PHONY: compile compile-appstore build build-appstore run run-appstore run-debug install release release-appstore clean version icon lint
 
@@ -28,7 +29,7 @@ build: compile
 	@$(MAKE) _bundle SUFFIX=-dev
 
 build-appstore: compile-appstore
-	@$(MAKE) _bundle SUFFIX=-dev ENTITLEMENTS=LidGuard-AppStore.entitlements
+	@$(MAKE) _bundle SUFFIX=-dev ENTITLEMENTS=LidGuard-AppStore.entitlements PROVISION_PROFILE="$(APPSTORE_PROFILE)"
 
 # Dev: build and open
 run: build
@@ -81,7 +82,7 @@ release:
 
 # App Store: build, bundle, sign, and package for Transporter upload
 release-appstore: compile-appstore
-	@$(MAKE) _bundle SUFFIX= ENTITLEMENTS=LidGuard-AppStore.entitlements CODESIGN_ID="$(CODESIGN_ID_APPSTORE)" CODESIGN_REQ=
+	@$(MAKE) _bundle SUFFIX= ENTITLEMENTS=LidGuard-AppStore-Release.entitlements CODESIGN_ID="$(CODESIGN_ID_APPSTORE)" CODESIGN_REQ= PROVISION_PROFILE="$(APPSTORE_PROFILE)"
 	@VERSION=$$(cat $(VERSION_FILE)); \
 	productbuild --component $(BUNDLE) /Applications \
 		--sign "$(INSTALLER_ID_APPSTORE)" \
@@ -92,24 +93,29 @@ release-appstore: compile-appstore
 		--apple-id "6760257102" \
 		--bundle-id "com.akim.lidguard" \
 		--bundle-short-version-string "$$VERSION" \
-		--bundle-version "$$(echo $$VERSION | sed 's/[-dev.]//g')" \
+		--bundle-version "$$(date +%y%m%d%H%M)" \
 		--apiKey 37ZNB2LF54 \
 		--apiIssuer 6492048a-9214-4cfd-9d50-2b1469375376 && \
 	echo "Uploaded to App Store Connect"
 
-# Internal: create .app bundle with optional SUFFIX (-dev or empty) and ENTITLEMENTS
+# Internal: create .app bundle with optional SUFFIX (-dev or empty), ENTITLEMENTS and PROVISION_PROFILE
 ENTITLEMENTS ?= LidGuard.entitlements
+PROVISION_PROFILE ?=
 _bundle:
 	@VERSION=$$(cat $(VERSION_FILE))$(SUFFIX); \
 	echo "Bundling $(APP_NAME) v$$VERSION"; \
 	rm -rf $(BUNDLE); \
 	mkdir -p $(BUNDLE)/Contents/MacOS $(BUNDLE)/Contents/Resources; \
 	cp $(BUILD_DIR)/$(APP_NAME) $(BUNDLE)/Contents/MacOS/; \
+	BUILD_NUM=$$(date +%y%m%d%H%M); \
 	sed -e "s/<string>1.0.0</<string>$$VERSION</" \
-	    -e "s/<string>1</<string>$$(echo $$VERSION | sed 's/[-dev.]//g')</" \
+	    -e "s/<string>1</<string>$$BUILD_NUM</" \
 	    Info.plist > $(BUNDLE)/Contents/Info.plist; \
 	cp Resources/AppIcon.icns $(BUNDLE)/Contents/Resources/ 2>/dev/null || true; \
 	cp PrivacyInfo.xcprivacy $(BUNDLE)/Contents/Resources/ 2>/dev/null || true; \
+	if [ -n "$(PROVISION_PROFILE)" ]; then \
+		cp "$(PROVISION_PROFILE)" $(BUNDLE)/Contents/embedded.provisionprofile; \
+	fi; \
 	for b in $$(find -L $(BUILD_DIR) -maxdepth 1 -name '*.bundle' -type d); do cp -R "$$b" $(BUNDLE)/Contents/Resources/; done; \
 	TIMESTAMP_FLAG=$$(if [ -z "$(SUFFIX)" ]; then echo "--timestamp"; else echo "--timestamp=none"; fi); \
 	for b in $$(find $(BUNDLE)/Contents/Resources -name '*.bundle' -type d); do \

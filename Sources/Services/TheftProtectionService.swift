@@ -106,6 +106,9 @@ final class TheftProtectionService {
     ) { [weak self] _ in
       self?.commandService.stop()
       self?.commandService.start()
+      if SettingsService.shared.telegramEnabled {
+        self?.deviceInfoCollector.warmUp()
+      }
     }
 
     NotificationCenter.default.addObserver(
@@ -129,7 +132,9 @@ final class TheftProtectionService {
   }
 
   func start() {
-    deviceInfoCollector.warmUp()
+    if SettingsService.shared.telegramEnabled {
+      deviceInfoCollector.warmUp()
+    }
     commandService.start()
     sleepWakeService.start()
     globalShortcutService.start()
