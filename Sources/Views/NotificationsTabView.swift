@@ -45,7 +45,11 @@ struct NotificationsTabView: View {
       } header: {
         Text("Telegram")
       } footer: {
-        if !telegramEnabled {
+        if telegramEnabled {
+          Text("To create a bot: open Telegram → search @BotFather → send /newbot → copy the token. Then paste it above and click Connect to link your chat.")
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+        } else {
           Text("Telegram notifications are disabled. The app will still protect your device locally (alarm, lock screen).")
             .font(.footnote)
             .foregroundStyle(.secondary)
