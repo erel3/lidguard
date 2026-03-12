@@ -208,7 +208,7 @@ final class TheftProtectionService {
     Logger.theft.info("Protection enabled")
     ActivityLog.logAsync(.armed, "Protection enabled")
 
-    if notify {
+    if notify && SettingsService.shared.notifyProtectionToggle {
       let triggers = activeTriggerNames()
       let behaviors = activeBehaviorNames()
       var message = "🟢 <b>PROTECTION ENABLED</b>\n\n"
@@ -237,11 +237,13 @@ final class TheftProtectionService {
     Logger.theft.info("Protection enabled via Bluetooth auto-arm")
     ActivityLog.logAsync(.bluetooth, "Protection auto-armed (all devices out of range)")
 
-    notificationService.send(
-      message: "📶 <b>PROTECTION AUTO-ARMED</b>\n\nAll trusted Bluetooth devices left range.",
-      keyboard: .enabled,
-      completion: nil
-    )
+    if SettingsService.shared.notifyAutoArm {
+      notificationService.send(
+        message: "📶 <b>PROTECTION AUTO-ARMED</b>\n\nAll trusted Bluetooth devices left range.",
+        keyboard: .enabled,
+        completion: nil
+      )
+    }
 
     delegate?.theftProtectionStateDidChange(self, state: .enabledBluetooth)
   }
@@ -266,18 +268,22 @@ final class TheftProtectionService {
     let method = remote ? "Telegram" : "Touch ID"
     if wasBluetooth && !remote {
       ActivityLog.logAsync(.bluetooth, "Protection auto-disarmed (trusted device returned)")
-      notificationService.send(
-        message: "📶 <b>PROTECTION AUTO-DISARMED</b>\n\nTrusted Bluetooth device returned.",
-        keyboard: .disabled,
-        completion: nil
-      )
+      if SettingsService.shared.notifyAutoArm {
+        notificationService.send(
+          message: "📶 <b>PROTECTION AUTO-DISARMED</b>\n\nTrusted Bluetooth device returned.",
+          keyboard: .disabled,
+          completion: nil
+        )
+      }
     } else {
       ActivityLog.logAsync(.disarmed, "Protection disabled via \(method)")
-      notificationService.send(
-        message: "🔴 <b>PROTECTION DISABLED</b>\n\nDisabled via \(method).",
-        keyboard: .disabled,
-        completion: nil
-      )
+      if SettingsService.shared.notifyProtectionToggle {
+        notificationService.send(
+          message: "🔴 <b>PROTECTION DISABLED</b>\n\nDisabled via \(method).",
+          keyboard: .disabled,
+          completion: nil
+        )
+      }
     }
 
     delegate?.theftProtectionStateDidChange(self, state: .disabled)

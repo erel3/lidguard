@@ -39,6 +39,13 @@ run-appstore: build-appstore
 	open $(BUNDLE)
 
 # Debug: build debug binary and run directly (no .app bundle)
+run-screenshot:
+	xcodebuild -scheme $(APP_NAME) -configuration Release -destination 'platform=macOS' \
+		-derivedDataPath $(XCODEBUILD_DIR) build \
+		SWIFT_ACTIVE_COMPILATION_CONDITIONS='SCREENSHOT' 2>&1 | tail -1
+	@$(MAKE) _bundle SUFFIX=-dev
+	open $(BUNDLE)
+
 run-debug:
 	swift build && .build/debug/$(APP_NAME)
 

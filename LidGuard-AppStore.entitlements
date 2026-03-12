@@ -8,8 +8,6 @@
     <true/>
     <key>com.apple.security.personal-information.location</key>
     <true/>
-    <key>com.apple.security.personal-information.addressbook</key>
-    <true/>
     <key>com.apple.security.device.bluetooth</key>
     <true/>
 </dict>

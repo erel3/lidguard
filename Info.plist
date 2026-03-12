@@ -25,7 +25,7 @@
     <key>NSBluetoothAlwaysUsageDescription</key>
     <string>LidGuard needs Bluetooth for proximity detection</string>
     <key>NSLocationWhenInUseUsageDescription</key>
-    <string>LidGuard sends location when theft is detected</string>
+    <string>LidGuard uses your location to help you find your Mac if theft is detected. For example, when the alarm triggers, your current location is sent to your Telegram bot so you can track your device.</string>
     <key>NSContactsUsageDescription</key>
     <string>LidGuard reads contact info for lock screen message</string>
     <key>NSHumanReadableCopyright</key>

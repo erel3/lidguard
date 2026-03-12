@@ -1,4 +1,6 @@
+#if !APPSTORE
 import Contacts
+#endif
 import Foundation
 
 extension Notification.Name {
@@ -14,7 +16,9 @@ extension Notification.Name {
 final class SettingsService {
   static let shared = SettingsService()
   private let defaults = UserDefaults.standard
+  #if !APPSTORE
   private let contactStore = CNContactStore()
+  #endif
 
   private enum Keys {
     static let contactName = "lidguard.contactName"
@@ -57,6 +61,17 @@ final class SettingsService {
 
     // Bluetooth Shortcut
     static let btShortcutEnabled = "lidguard.btShortcutEnabled"
+
+    // Notification toggles
+    static let notifyAutoArm = "lidguard.notifyAutoArm"
+    static let notifyProtectionToggle = "lidguard.notifyProtectionToggle"
+
+    // Tracking data toggles
+    static let trackLocation = "lidguard.trackLocation"
+    static let trackPublicIP = "lidguard.trackPublicIP"
+    static let trackWiFi = "lidguard.trackWiFi"
+    static let trackBattery = "lidguard.trackBattery"
+    static let trackDeviceName = "lidguard.trackDeviceName"
 
     // Bluetooth
     static let bluetoothAutoArmEnabled = "lidguard.bluetoothAutoArmEnabled"
@@ -240,6 +255,45 @@ final class SettingsService {
   }
   #endif
 
+  // MARK: - Notification Toggles
+
+  var notifyAutoArm: Bool {
+    get { defaults.object(forKey: Keys.notifyAutoArm) as? Bool ?? true }
+    set { defaults.set(newValue, forKey: Keys.notifyAutoArm) }
+  }
+
+  var notifyProtectionToggle: Bool {
+    get { defaults.object(forKey: Keys.notifyProtectionToggle) as? Bool ?? true }
+    set { defaults.set(newValue, forKey: Keys.notifyProtectionToggle) }
+  }
+
+  // MARK: - Tracking Data Toggles
+
+  var trackLocation: Bool {
+    get { defaults.object(forKey: Keys.trackLocation) as? Bool ?? true }
+    set { defaults.set(newValue, forKey: Keys.trackLocation) }
+  }
+
+  var trackPublicIP: Bool {
+    get { defaults.object(forKey: Keys.trackPublicIP) as? Bool ?? true }
+    set { defaults.set(newValue, forKey: Keys.trackPublicIP) }
+  }
+
+  var trackWiFi: Bool {
+    get { defaults.object(forKey: Keys.trackWiFi) as? Bool ?? true }
+    set { defaults.set(newValue, forKey: Keys.trackWiFi) }
+  }
+
+  var trackBattery: Bool {
+    get { defaults.object(forKey: Keys.trackBattery) as? Bool ?? true }
+    set { defaults.set(newValue, forKey: Keys.trackBattery) }
+  }
+
+  var trackDeviceName: Bool {
+    get { defaults.object(forKey: Keys.trackDeviceName) as? Bool ?? true }
+    set { defaults.set(newValue, forKey: Keys.trackDeviceName) }
+  }
+
   // MARK: - Bluetooth Shortcut
 
   var btShortcutEnabled: Bool {
@@ -314,6 +368,13 @@ final class SettingsService {
     defaults.removeObject(forKey: Keys.behaviorAutoAlarm)
     defaults.removeObject(forKey: Keys.alarmVolume)
     defaults.removeObject(forKey: Keys.offlineSirenEnabled)
+    defaults.removeObject(forKey: Keys.notifyAutoArm)
+    defaults.removeObject(forKey: Keys.notifyProtectionToggle)
+    defaults.removeObject(forKey: Keys.trackLocation)
+    defaults.removeObject(forKey: Keys.trackPublicIP)
+    defaults.removeObject(forKey: Keys.trackWiFi)
+    defaults.removeObject(forKey: Keys.trackBattery)
+    defaults.removeObject(forKey: Keys.trackDeviceName)
     defaults.removeObject(forKey: Keys.setupComplete)
     defaults.removeObject(forKey: Keys.autoUpdateEnabled)
     defaults.removeObject(forKey: Keys.lastUpdateCheckDate)
@@ -338,6 +399,7 @@ final class SettingsService {
 
   // MARK: - My Card Phone
 
+  #if !APPSTORE
   private var myCardPhone: String? {
     guard CNContactStore.authorizationStatus(for: .contacts) == .authorized else {
       return nil
@@ -370,4 +432,5 @@ final class SettingsService {
       completion()
     }
   }
+  #endif
 }

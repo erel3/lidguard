@@ -1,4 +1,6 @@
+#if !APPSTORE
 import Contacts
+#endif
 import KeyboardShortcuts
 import SwiftUI
 
@@ -33,8 +35,10 @@ struct SettingsView: View {
   @State private var contactName: String = ""
   @State private var contactPhone: String = ""
   @State private var startAtLogin: Bool = false
+  #if !APPSTORE
   @State private var autoUpdateEnabled: Bool = true
   @State private var isCheckingForUpdates: Bool = false
+  #endif
 
   // Triggers
   @State private var triggerLidClose: Bool = true
@@ -67,6 +71,13 @@ struct SettingsView: View {
   @State private var telegramBotToken: String = ""
   @State private var telegramChatId: String = ""
   @State private var telegramEnabled: Bool = true
+  @State private var notifyAutoArm: Bool = true
+  @State private var notifyProtectionToggle: Bool = true
+  @State private var trackLocation: Bool = true
+  @State private var trackPublicIP: Bool = true
+  @State private var trackWiFi: Bool = true
+  @State private var trackBattery: Bool = true
+  @State private var trackDeviceName: Bool = true
   @State private var verificationController: TelegramVerificationWindowController?
 
   @State private var isDaemonConnected = false
@@ -201,6 +212,7 @@ struct SettingsView: View {
           .foregroundStyle(.secondary)
       }
 
+      #if !APPSTORE
       Section {
         Toggle("Automatically check for updates", isOn: $autoUpdateEnabled)
         HStack {
@@ -223,6 +235,7 @@ struct SettingsView: View {
       } header: {
         Text("Updates")
       }
+      #endif
 
       Section {
         HStack {
@@ -365,83 +378,23 @@ struct SettingsView: View {
   // MARK: - Protection Tab
 
   private var protectionTab: some View {
-    Form {
-      Section {
-        Toggle("Idle sleep prevention", isOn: $behaviorSleepPrevention)
-        helperToggle("Lid-close sleep prevention", isOn: $behaviorLidCloseSleep)
-      } header: {
-        Text("Sleep")
-      } footer: {
-        Text("Idle prevents system sleep via IOPMAssertion. Lid-close uses pmset disablesleep via Helper to keep the Mac running with lid closed.")
-          .font(.footnote)
-          .foregroundStyle(.secondary)
-      }
-
-      Section {
-        Toggle("Shutdown blocking", isOn: $behaviorShutdownBlocking)
-        helperToggle("Lock screen on theft mode", isOn: $lockScreenOnTheftMode)
-        if lockScreenOnTheftMode {
-          helperToggle("Lock screen message", isOn: $behaviorLockScreen)
-            .onChange(of: behaviorLockScreen) { _, newValue in
-              if newValue && isDaemonConnected {
-                requestContactsAndPopulate()
-              }
-            }
-          if behaviorLockScreen {
-            LabeledContent("Name") {
-              TextField("", text: $contactName)
-                .textFieldStyle(.plain)
-            }
-            LabeledContent("Phone") {
-              TextField("", text: $contactPhone)
-                .textFieldStyle(.plain)
-            }
-            LabeledContent {
-              Button("Retrieve from Contacts") {
-                retrieveFromContacts()
-              }
-              .buttonStyle(.borderless)
-            } label: {
-              EmptyView()
-            }
-          }
-        }
-      } header: {
-        Text("Defense")
-      }
-
-      Section {
-        Toggle("Auto-play on theft mode", isOn: $behaviorAutoAlarm)
-        Picker("Sound", selection: $selectedAlarmSound) {
-          ForEach(alarmSounds, id: \.self) { sound in
-            Text(sound).tag(sound)
-          }
-        }
-        .onChange(of: selectedAlarmSound) { _, newValue in
-          if newValue == "Siren" {
-            AlarmAudioManager.shared.previewSiren()
-          } else {
-            NSSound(named: newValue)?.play()
-          }
-        }
-        LabeledContent("Volume") {
-          HStack {
-            Slider(value: $alarmVolume, in: 10...100, step: 10)
-            Text("\(Int(alarmVolume))%")
-              .monospacedDigit()
-              .frame(width: 40, alignment: .trailing)
-          }
-        }
-        Toggle("Siren when offline", isOn: $offlineSirenEnabled)
-      } header: {
-        Text("Alarm")
-      } footer: {
-        Text("Alarm can be triggered via Telegram or keyboard shortcut. Offline siren plays automatically when Telegram is unavailable.")
-          .font(.footnote)
-          .foregroundStyle(.secondary)
-      }
-    }
-    .formStyle(.grouped)
+    ProtectionTabView(
+      behaviorSleepPrevention: $behaviorSleepPrevention,
+      behaviorLidCloseSleep: $behaviorLidCloseSleep,
+      behaviorShutdownBlocking: $behaviorShutdownBlocking,
+      lockScreenOnTheftMode: $lockScreenOnTheftMode,
+      behaviorLockScreen: $behaviorLockScreen,
+      contactName: $contactName,
+      contactPhone: $contactPhone,
+      behaviorAutoAlarm: $behaviorAutoAlarm,
+      selectedAlarmSound: $selectedAlarmSound,
+      alarmVolume: $alarmVolume,
+      offlineSirenEnabled: $offlineSirenEnabled,
+      isDaemonConnected: isDaemonConnected,
+      alarmSounds: alarmSounds,
+      onLockScreenEnabled: onLockScreenEnabled,
+      onRetrieveContacts: onRetrieveContacts
+    )
   }
 
   // MARK: - Bluetooth Tab
@@ -498,44 +451,21 @@ struct SettingsView: View {
   // MARK: - Notifications Tab
 
   private var notificationsTab: some View {
-    Form {
-      Section {
-        Toggle("Enable Telegram notifications", isOn: $telegramEnabled)
-        if telegramEnabled {
-          LabeledContent("Bot Token") {
-            SecureField("", text: $telegramBotToken)
-              .textFieldStyle(.plain)
-          }
-          LabeledContent("Chat ID") {
-            if telegramChatId.isEmpty {
-              Button("Connect") {
-                connectTelegram()
-              }
-              .disabled(telegramBotToken.isEmpty)
-            } else {
-              HStack {
-                Text(telegramChatId)
-                  .foregroundStyle(.secondary)
-                Button("Disconnect") {
-                  telegramChatId = ""
-                }
-              }
-            }
-          }
-          helperToggle("Lock screen on /enable command", isOn: $lockScreenOnTelegramEnable)
-        }
-      } header: {
-        Text("Telegram")
-      } footer: {
-        if !telegramEnabled {
-          Text("Telegram notifications are disabled. The app will still protect your device locally (alarm, lock screen).")
-            .font(.footnote)
-            .foregroundStyle(.secondary)
-        }
-      }
-
-    }
-    .formStyle(.grouped)
+    NotificationsTabView(
+      telegramEnabled: $telegramEnabled,
+      telegramBotToken: $telegramBotToken,
+      telegramChatId: $telegramChatId,
+      lockScreenOnTelegramEnable: $lockScreenOnTelegramEnable,
+      notifyAutoArm: $notifyAutoArm,
+      notifyProtectionToggle: $notifyProtectionToggle,
+      trackLocation: $trackLocation,
+      trackPublicIP: $trackPublicIP,
+      trackWiFi: $trackWiFi,
+      trackBattery: $trackBattery,
+      trackDeviceName: $trackDeviceName,
+      isDaemonConnected: isDaemonConnected,
+      onConnect: { connectTelegram() }
+    )
   }
 
   // MARK: - Actions
@@ -547,7 +477,9 @@ struct SettingsView: View {
     telegramChatId = settings.telegramChatId ?? ""
     telegramEnabled = settings.telegramEnabled
     startAtLogin = loginItem.isEnabled
+    #if !APPSTORE
     autoUpdateEnabled = settings.autoUpdateEnabled
+    #endif
     selectedAlarmSound = settings.alarmSound
     behaviorAutoAlarm = settings.behaviorAutoAlarm
     alarmVolume = Double(settings.alarmVolume)
@@ -568,6 +500,13 @@ struct SettingsView: View {
     bluetoothAutoArmEnabled = settings.bluetoothAutoArmEnabled
     bluetoothArmGracePeriod = settings.bluetoothArmGracePeriod
     trustedBLEDevices = settings.trustedBLEDevices
+    notifyAutoArm = settings.notifyAutoArm
+    notifyProtectionToggle = settings.notifyProtectionToggle
+    trackLocation = settings.trackLocation
+    trackPublicIP = settings.trackPublicIP
+    trackWiFi = settings.trackWiFi
+    trackBattery = settings.trackBattery
+    trackDeviceName = settings.trackDeviceName
   }
 
   private func saveSettings() {
@@ -606,12 +545,22 @@ struct SettingsView: View {
     settings.trustedBLEDevices = trustedBLEDevices
     NotificationCenter.default.post(name: .bluetoothSettingsChanged, object: nil)
 
+    settings.notifyAutoArm = notifyAutoArm
+    settings.notifyProtectionToggle = notifyProtectionToggle
+    settings.trackLocation = trackLocation
+    settings.trackPublicIP = trackPublicIP
+    settings.trackWiFi = trackWiFi
+    settings.trackBattery = trackBattery
+    settings.trackDeviceName = trackDeviceName
+
+    #if !APPSTORE
     settings.autoUpdateEnabled = autoUpdateEnabled
     if autoUpdateEnabled {
       UpdateService.shared.startPeriodicChecks()
     } else {
       UpdateService.shared.stopPeriodicChecks()
     }
+    #endif
 
     if !settings.setupComplete {
       settings.setupComplete = true
@@ -648,6 +597,15 @@ struct SettingsView: View {
     }
   }
 
+  #if !APPSTORE
+  private var onLockScreenEnabled: (() -> Void)? { { requestContactsAndPopulate() } }
+  private var onRetrieveContacts: (() -> Void)? { { retrieveFromContacts() } }
+  #else
+  private var onLockScreenEnabled: (() -> Void)? { nil }
+  private var onRetrieveContacts: (() -> Void)? { nil }
+  #endif
+
+  #if !APPSTORE
   private func checkForUpdates() {
     isCheckingForUpdates = true
     UpdateService.shared.checkForUpdates(silent: false) {
@@ -673,6 +631,7 @@ struct SettingsView: View {
       if granted { DispatchQueue.main.async { if let p = contactsPhoneNumber() { self.contactPhone = p } } }
     }
   }
+  #endif
 
   private func helperToggle(_ title: String, isOn: Binding<Bool>) -> some View {
     Toggle(isOn: isOn) {
@@ -689,6 +648,7 @@ struct SettingsView: View {
   }
 }
 
+#if !APPSTORE
 private func contactsPhoneNumber() -> String? {
   let store = CNContactStore()
   guard CNContactStore.authorizationStatus(for: .contacts) == .authorized else { return nil }
@@ -697,3 +657,4 @@ private func contactsPhoneNumber() -> String? {
   let mobile = me.phoneNumbers.first { $0.label == CNLabelPhoneNumberMobile }
   return mobile?.value.stringValue ?? me.phoneNumbers.first?.value.stringValue
 }
+#endif

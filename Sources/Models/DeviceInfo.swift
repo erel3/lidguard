@@ -40,7 +40,9 @@ struct DeviceInfo {
       lines.append("🔋 <b>Battery:</b> \(level)% (\(status))")
     }
 
-    lines.append("💻 <b>Device:</b> \(deviceName)")
+    if !deviceName.isEmpty {
+      lines.append("💻 <b>Device:</b> \(deviceName)")
+    }
 
     return lines.joined(separator: "\n")
   }

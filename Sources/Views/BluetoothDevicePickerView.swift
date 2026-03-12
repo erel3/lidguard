@@ -94,7 +94,7 @@ struct BluetoothDevicePickerView: View {
             let device = TrustedBLEDevice(id: id, name: info.name)
             trustedDevices.append(device)
           }
-          .buttonStyle(.borderless)
+          .buttonStyle(.bordered)
         }
         .padding(.vertical, 2)
       }
