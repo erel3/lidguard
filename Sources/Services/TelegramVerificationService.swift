@@ -62,7 +62,7 @@ final class TelegramVerificationService {
         return
       }
       self.queue.async {
-        self.parseUpdates(data, code: code, onVerified: onVerified)
+        self.parseUpdates(data, botToken: botToken, code: code, onVerified: onVerified)
         self.isPolling = false
       }
     }
@@ -82,7 +82,7 @@ final class TelegramVerificationService {
   }
 
   /// Must be called on `queue`
-  private func parseUpdates(_ data: Data, code: String, onVerified: @escaping (String) -> Void) {
+  private func parseUpdates(_ data: Data, botToken: String, code: String, onVerified: @escaping (String) -> Void) {
     guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
           let ok = json["ok"] as? Bool, ok,
           let results = json["result"] as? [[String: Any]] else { return }
