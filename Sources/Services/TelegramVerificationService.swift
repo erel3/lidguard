@@ -69,6 +69,18 @@ final class TelegramVerificationService {
     task.resume()
   }
 
+  private func sendConnectedMessage(botToken: String, chatId: String) {
+    let text = "✅ LidGuard connected successfully."
+    let urlString = "https://api.telegram.org/bot\(botToken)/sendMessage"
+    guard let url = URL(string: urlString) else { return }
+    var request = URLRequest(url: url)
+    request.httpMethod = "POST"
+    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+    let body: [String: Any] = ["chat_id": chatId, "text": text]
+    request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+    session.dataTask(with: request).resume()
+  }
+
   /// Must be called on `queue`
   private func parseUpdates(_ data: Data, code: String, onVerified: @escaping (String) -> Void) {
     guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -89,6 +101,7 @@ final class TelegramVerificationService {
         let chatIdString = String(chatId)
         Logger.telegram.info("Verification successful, chat ID: \(chatIdString)")
         stopInternal()
+        sendConnectedMessage(botToken: botToken, chatId: chatIdString)
         DispatchQueue.main.async {
           onVerified(chatIdString)
         }
