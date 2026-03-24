@@ -17,7 +17,7 @@
 
 <p align="center">
   A menu bar app that detects lid close and power disconnect events,<br>
-  then tracks your device and sends alerts via Telegram and Pushover.
+  then tracks your device and sends alerts via Telegram.
 </p>
 
 ---
@@ -30,7 +30,7 @@
                                           ├─ 📍 Location
     arm: menu, shortcut                   ├─ 📶 WiFi & IP
     trigger: lid close, power disconnect  ├─ 🔋 Battery
-    authenticate: Touch ID, Telegram      ├─ 🔔 Alerts (Telegram + Pushover)
+    authenticate: Touch ID, Telegram      ├─ 🔔 Telegram alerts
     disarm: Touch ID                      ├─ 🚨 Siren alarm
                                           └─ 🔒 Lock screen overlay
 ```
@@ -41,7 +41,7 @@ When theft mode activates, LidGuard sends **tracking updates every 20 seconds** 
 
 🛡️ **Theft Detection** — lid close, power disconnect, power button press\
 📍 **Device Tracking** — location, IP, WiFi, battery every 20s\
-📲 **Telegram & Pushover** — instant alerts with full device info\
+📲 **Telegram Alerts** — instant notifications with full device info\
 🎮 **Remote Control** — enable, disable, alarm, status via Telegram bot\
 🚨 **Alarm** — synthesized siren or system sounds at max volume (enforced, can't be silenced)\
 😴 **Sleep Prevention** — IOKit assertions + `pmset disablesleep`\
@@ -85,15 +85,6 @@ LidGuard uses a Telegram bot to send alerts and receive remote commands.
 
 > The bot only responds to your chat ID — no one else can control it.
 
-### Pushover (optional)
-
-[Pushover](https://pushover.net) delivers instant push notifications to your phone. Useful as a fast backup channel alongside Telegram.
-
-1. Create an account at [pushover.net](https://pushover.net) and install the mobile app
-2. Copy your **User Key** from the Pushover dashboard
-3. [Create an application](https://pushover.net/apps/build) to get an **API Token**
-4. Paste both into LidGuard Settings → Notifications → Pushover
-
 ### Settings
 
 Settings are organized into four tabs:
@@ -103,7 +94,7 @@ Settings are organized into four tabs:
 | **General** | Contact name & phone (shown on lock screen overlay), launch at login, auto-update, reset |
 | **Triggers** | Lid close, power disconnect, power button toggles; global shortcut config |
 | **Protection** | Sleep prevention, shutdown blocking, lock screen, alarm sound & volume, auto-alarm |
-| **Notifications** | Telegram bot token & chat ID, Pushover user key & API token, per-service toggles |
+| **Notifications** | Telegram bot token & chat ID, alert and tracking toggles |
 
 > Credentials are stored in macOS Keychain — never synced or uploaded.
 
