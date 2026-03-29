@@ -28,6 +28,7 @@ final class BluetoothProximityService: NSObject {
   // All mutable state below is accessed exclusively on `queue`
   private var isMonitoring = false
   private var isDiscoveryMode = false
+  private var isPaused = false
   private var scanTimer: DispatchSourceTimer?
 
   private var seenThisCycle: Set<UUID> = []
@@ -101,6 +102,7 @@ final class BluetoothProximityService: NSObject {
     queue.async { [self] in
       guard isMonitoring else { return }
       isMonitoring = false
+      isPaused = false
       stopScanCycle()
       seenThisCycle.removeAll()
       lastSeenRSSI.removeAll()
@@ -118,6 +120,7 @@ final class BluetoothProximityService: NSObject {
 
   func restart() {
     queue.async { [self] in
+      isPaused = false
       // Inline stop
       if isMonitoring {
         isMonitoring = false
@@ -186,6 +189,7 @@ final class BluetoothProximityService: NSObject {
   func pause() {
     queue.sync { [self] in
       guard isMonitoring else { return }
+      isPaused = true
       stopScanCycle()
       Logger.bluetooth.info("BLE scanning paused for sleep")
     }
@@ -193,9 +197,12 @@ final class BluetoothProximityService: NSObject {
 
   func resume() {
     queue.async { [self] in
+      guard isPaused else { return }
+      isPaused = false
+      // Cancel any pending poweredOff arm-delay timer from sleep period
+      scanTimer?.cancel()
+      scanTimer = nil
       guard isMonitoring, centralManager?.state == .poweredOn else { return }
-      // Skip if scan cycle already running (e.g. centralManagerDidUpdateState fired first)
-      guard scanTimer == nil else { return }
       let timer = DispatchSource.makeTimerSource(queue: queue)
       timer.schedule(deadline: .now() + 2.0)
       timer.setEventHandler { [weak self] in
@@ -302,7 +309,7 @@ final class BluetoothProximityService: NSObject {
   }
 
   private func evaluatePresence() {
-    guard isMonitoring, !cachedTrustedDevices.isEmpty else { return }
+    guard isMonitoring, !isPaused, !cachedTrustedDevices.isEmpty else { return }
     guard !checkRecoveryCooldown() else { return }
 
     let now = Date()
@@ -364,11 +371,11 @@ extension BluetoothProximityService: CBCentralManagerDelegate {
     switch central.state {
     case .poweredOn:
       Logger.bluetooth.info("Bluetooth powered on")
-      if isMonitoring {
+      if isMonitoring && !isPaused {
         btRecoveryUntil = Date().addingTimeInterval(Config.Bluetooth.btRecoveryCooldown)
         startScanCycle()
       }
-      if isDiscoveryMode {
+      if isDiscoveryMode && !isPaused {
         central.scanForPeripherals(
           withServices: nil,
           options: [CBCentralManagerScanOptionAllowDuplicatesKey: true]

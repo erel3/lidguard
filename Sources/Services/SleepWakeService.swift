@@ -1,5 +1,6 @@
 import Foundation
 import IOKit.pwr_mgt
+import os.log
 
 // IOKit message constants (not exposed to Swift)
 private let kIOMessageCanSystemSleep: UInt32 = 0xe0000270
@@ -16,8 +17,13 @@ final class SleepWakeService {
   weak var delegate: SleepWakeDelegate?
 
   private var notificationPort: IONotificationPortRef?
+  private var runLoopSource: CFRunLoopSource?
   private var notifierObject: io_object_t = 0
   private var rootPort: io_connect_t = 0
+
+  deinit {
+    stop()
+  }
 
   func start() {
     rootPort = IORegisterForSystemPower(
@@ -28,22 +34,24 @@ final class SleepWakeService {
     )
 
     guard rootPort != 0 else {
-      print("[SleepWakeService] Failed to register")
+      Logger.power.error("SleepWakeService failed to register")
       return
     }
 
     if let port = notificationPort {
-      CFRunLoopAddSource(
-        CFRunLoopGetCurrent(),
-        IONotificationPortGetRunLoopSource(port).takeUnretainedValue(),
-        .commonModes
-      )
+      let source = IONotificationPortGetRunLoopSource(port).takeUnretainedValue()
+      runLoopSource = source
+      CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
     }
 
-    print("[SleepWakeService] Started")
+    Logger.power.info("SleepWakeService started")
   }
 
   func stop() {
+    if let source = runLoopSource {
+      CFRunLoopRemoveSource(CFRunLoopGetMain(), source, .commonModes)
+      runLoopSource = nil
+    }
     if notifierObject != 0 {
       IODeregisterForSystemPower(&notifierObject)
       notifierObject = 0
@@ -58,12 +66,12 @@ final class SleepWakeService {
   fileprivate func handlePower(_ type: UInt32, _ arg: UnsafeMutableRawPointer?) {
     switch type {
     case kIOMessageSystemWillSleep:
-      print("[SleepWakeService] Will sleep")
+      Logger.power.info("System will sleep")
       delegate?.systemWillSleep()
       IOAllowPowerChange(rootPort, Int(bitPattern: arg))
 
     case kIOMessageSystemHasPoweredOn:
-      print("[SleepWakeService] Did wake")
+      Logger.power.info("System did wake")
       delegate?.systemDidWake()
 
     case kIOMessageCanSystemSleep:

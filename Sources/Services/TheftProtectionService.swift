@@ -157,6 +157,9 @@ final class TheftProtectionService {
   }
 
   func shutdown() {
+    commandService.stop()
+    sleepWakeService.stop()
+    lidMonitor.stop()
     powerMonitor.stop()
     globalShortcutService.stop()
     bluetoothProximityService.stop()
@@ -393,8 +396,8 @@ final class TheftProtectionService {
       hardwareInfo += "⚡️ <b>Triggers:</b> \(triggers.isEmpty ? "none" : triggers.joined(separator: ", "))\n"
       hardwareInfo += "🛡 <b>Behaviors:</b> \(behaviors.isEmpty ? "none" : behaviors.joined(separator: ", "))\n"
 
-      let sendMessage = { (btInfo: String) in
-        self.notificationService.send(
+      let sendMessage = { [weak self] (btInfo: String) in
+        self?.notificationService.send(
           message: "<b>STATUS: \(status)</b>\n\n\(hardwareInfo)\(btInfo)\n\(info.formattedMessage)",
           keyboard: keyboard,
           completion: nil
@@ -488,13 +491,16 @@ final class TheftProtectionService {
         message: prefix + info.formattedMessage,
         keyboard: keyboard
       ) { [weak self] success in
-        guard let self = self, self.state == .theftMode else { return }
-        if success {
-          self.telegramSucceededInTheftMode = true
-          self.cancelOfflineSirenTimer()
-        } else {
-          self.scheduleOfflineSiren()
+        CFRunLoopPerformBlock(CFRunLoopGetMain(), CFRunLoopMode.commonModes.rawValue) {
+          guard let self = self, self.state == .theftMode else { return }
+          if success {
+            self.telegramSucceededInTheftMode = true
+            self.cancelOfflineSirenTimer()
+          } else {
+            self.scheduleOfflineSiren()
+          }
         }
+        CFRunLoopWakeUp(CFRunLoopGetMain())
       }
     }
   }
@@ -594,17 +600,21 @@ extension TheftProtectionService: SleepWakeDelegate {
 
   func systemDidWake() {
     ActivityLog.logAsync(.power, "System did wake")
-    // On any wake (including DarkWake), check lid and re-enable sleep prevention
+    // On any wake (including DarkWake), check lid for theft trigger
+    if state == .enabled || state == .enabledBluetooth {
+      if SettingsService.shared.triggerLidClose && lidMonitor.isClosed {
+        activateTheftMode(trigger: .lidClosed)
+        // Resume command polling even in DarkWake so user can remotely /stop
+        commandService.resume()
+      }
+    }
+    // Only resume services and re-enable assertions on full (user) wake, not DarkWake
+    guard CGDisplayIsAsleep(CGMainDisplayID()) == 0 else { return }
     if state == .enabled || state == .enabledBluetooth {
       if SettingsService.shared.behaviorSleepPrevention {
         sleepPrevention.enable()
       }
-      if SettingsService.shared.triggerLidClose && lidMonitor.isClosed {
-        activateTheftMode(trigger: .lidClosed)
-      }
     }
-    // Only resume on full (user) wake, not DarkWake
-    guard CGDisplayIsAsleep(CGMainDisplayID()) == 0 else { return }
     bluetoothProximityService.resume()
     commandService.resume()
   }

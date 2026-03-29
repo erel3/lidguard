@@ -49,9 +49,11 @@ final class TelegramCommandService {
   }
 
   func stop() {
-    timer?.cancel()
-    timer = nil
-    Logger.telegram.info("Command polling stopped")
+    queue.async { [self] in
+      timer?.cancel()
+      timer = nil
+      Logger.telegram.info("Command polling stopped")
+    }
   }
 
   func pause() {
@@ -94,12 +96,12 @@ final class TelegramCommandService {
     }
 
     let task = session.dataTask(with: url) { [weak self] data, _, error in
-      defer { self?.isPolling = false }
-      guard let self = self,
-            let data = data,
-            error == nil else { return }
-
-      self.parseUpdates(data, chatId: chatId)
+      guard let self else { return }
+      self.queue.async {
+        defer { self.isPolling = false }
+        guard let data, error == nil else { return }
+        self.parseUpdates(data, chatId: chatId)
+      }
     }
     task.resume()
   }
@@ -124,9 +126,10 @@ final class TelegramCommandService {
       if let command = parseCommand(text) {
         Logger.telegram.info("Received command: \(text)")
         ActivityLog.logAsync(.telegram, "Received command: \(text)")
-        // Call delegate directly on background queue - no main queue needed
-        // This avoids blocking when NSMenu is open
-        delegate?.telegramCommandReceived(command)
+        CFRunLoopPerformBlock(CFRunLoopGetMain(), CFRunLoopMode.commonModes.rawValue) { [weak self] in
+          self?.delegate?.telegramCommandReceived(command)
+        }
+        CFRunLoopWakeUp(CFRunLoopGetMain())
       }
     }
   }
