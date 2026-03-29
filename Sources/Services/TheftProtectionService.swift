@@ -581,6 +581,8 @@ extension TheftProtectionService: TelegramCommandDelegate {
 extension TheftProtectionService: SleepWakeDelegate {
   func systemWillSleep() {
     ActivityLog.logAsync(.power, "System will sleep")
+    bluetoothProximityService.pause()
+    commandService.pause()
     // Check lid right before sleep (only if enabled)
     if (state == .enabled || state == .enabledBluetooth) && SettingsService.shared.triggerLidClose && lidMonitor.isClosed {
       activateTheftMode(trigger: .lidClosed)
@@ -589,6 +591,8 @@ extension TheftProtectionService: SleepWakeDelegate {
 
   func systemDidWake() {
     ActivityLog.logAsync(.power, "System did wake")
+    bluetoothProximityService.resume()
+    commandService.resume()
     // On any wake (including DarkWake), check lid and re-enable sleep prevention
     if state == .enabled || state == .enabledBluetooth {
       if SettingsService.shared.behaviorSleepPrevention {

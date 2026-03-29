@@ -54,6 +54,24 @@ final class TelegramCommandService {
     Logger.telegram.info("Command polling stopped")
   }
 
+  func pause() {
+    timer?.cancel()
+    timer = nil
+    Logger.telegram.info("Command polling paused for sleep")
+  }
+
+  func resume() {
+    guard Config.Telegram.isConfigured && Config.Telegram.isEnabled else { return }
+    guard timer == nil else { return }
+    timer = DispatchSource.makeTimerSource(queue: queue)
+    timer?.schedule(deadline: .now() + pollInterval, repeating: pollInterval)
+    timer?.setEventHandler { [weak self] in
+      self?.pollUpdates()
+    }
+    timer?.resume()
+    Logger.telegram.info("Command polling resumed after wake")
+  }
+
   private func pollUpdates() {
     guard !isPolling else { return }
     guard let botToken = Config.Telegram.botToken,

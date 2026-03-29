@@ -181,6 +181,31 @@ final class BluetoothProximityService: NSObject {
     }
   }
 
+  // MARK: - Sleep/Wake
+
+  func pause() {
+    queue.async { [self] in
+      guard isMonitoring else { return }
+      stopScanCycle()
+      Logger.bluetooth.info("BLE scanning paused for sleep")
+    }
+  }
+
+  func resume() {
+    queue.async { [self] in
+      guard isMonitoring, centralManager?.state == .poweredOn else { return }
+      // Short delay to let the system settle after wake
+      let timer = DispatchSource.makeTimerSource(queue: queue)
+      timer.schedule(deadline: .now() + 2.0)
+      timer.setEventHandler { [weak self] in
+        self?.startScanCycle()
+      }
+      timer.resume()
+      scanTimer = timer
+      Logger.bluetooth.info("BLE scanning will resume after wake delay")
+    }
+  }
+
   // MARK: - Scan Cycle (called on queue)
 
   private func startScanCycle() {
