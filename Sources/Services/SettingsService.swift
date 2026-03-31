@@ -11,6 +11,7 @@ extension Notification.Name {
   static let helperInstallCompleted = Notification.Name("com.lidguard.helperInstallCompleted")
   static let helperStatusChanged = Notification.Name("com.lidguard.helperStatusChanged")
   static let helperStatusRequested = Notification.Name("com.lidguard.helperStatusRequested")
+  static let helperUpdateDismissed = Notification.Name("com.lidguard.helperUpdateDismissed")
 }
 
 final class SettingsService {
@@ -54,7 +55,9 @@ final class SettingsService {
     static let lastUpdateCheckDate = "lidguard.lastUpdateCheckDate"
     #if !APPSTORE
     static let skippedVersion = "lidguard.skippedVersion"
+    static let skippedHelperVersion = "lidguard.skippedHelperVersion"
     #endif
+    static let lastHelperUpdateCheckDate = "lidguard.lastHelperUpdateCheckDate"
 
     // Setup
     static let setupComplete = "lidguard.setupComplete"
@@ -253,7 +256,17 @@ final class SettingsService {
     get { defaults.string(forKey: Keys.skippedVersion) }
     set { defaults.set(newValue, forKey: Keys.skippedVersion) }
   }
+
+  var skippedHelperVersion: String? {
+    get { defaults.string(forKey: Keys.skippedHelperVersion) }
+    set { defaults.set(newValue, forKey: Keys.skippedHelperVersion) }
+  }
   #endif
+
+  var lastHelperUpdateCheckDate: Date? {
+    get { defaults.object(forKey: Keys.lastHelperUpdateCheckDate) as? Date }
+    set { defaults.set(newValue, forKey: Keys.lastHelperUpdateCheckDate) }
+  }
 
   // MARK: - Notification Toggles
 
@@ -380,7 +393,9 @@ final class SettingsService {
     defaults.removeObject(forKey: Keys.lastUpdateCheckDate)
     #if !APPSTORE
     defaults.removeObject(forKey: Keys.skippedVersion)
+    defaults.removeObject(forKey: Keys.skippedHelperVersion)
     #endif
+    defaults.removeObject(forKey: Keys.lastHelperUpdateCheckDate)
     defaults.removeObject(forKey: Keys.btShortcutEnabled)
     defaults.removeObject(forKey: Keys.bluetoothAutoArmEnabled)
     defaults.removeObject(forKey: Keys.trustedBLEDevices)

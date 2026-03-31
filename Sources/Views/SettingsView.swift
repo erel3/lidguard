@@ -83,9 +83,11 @@ struct SettingsView: View {
   @State private var isDaemonConnected = false
   @State private var daemonVersion: String?
   @State private var helperNeedsUpdate = false
+  @State private var helperDisconnectedForUpdate = false
   @State private var helperAccessibilityGranted = false
   @State private var isInstallingHelper = false
   @State private var helperInstallResult: Bool?
+  @State private var isCheckingForHelperUpdates = false
   @State private var selectedSection: SettingsSection? = .general
   @State private var showingResetConfirmation = false
   @Environment(\.dismiss) private var dismiss
@@ -132,12 +134,14 @@ struct SettingsView: View {
       isDaemonConnected = TheftProtectionService.daemonConnected
       daemonVersion = TheftProtectionService.daemonVersion
       helperNeedsUpdate = TheftProtectionService.helperNeedsUpdate
+      helperDisconnectedForUpdate = TheftProtectionService.helperDisconnectedForUpdate
       helperAccessibilityGranted = TheftProtectionService.helperAccessibilityGranted
     }
     .onReceive(NotificationCenter.default.publisher(for: .daemonConnectionChanged)) { _ in
       isDaemonConnected = TheftProtectionService.daemonConnected
       daemonVersion = TheftProtectionService.daemonVersion
       helperNeedsUpdate = TheftProtectionService.helperNeedsUpdate
+      helperDisconnectedForUpdate = TheftProtectionService.helperDisconnectedForUpdate
       helperAccessibilityGranted = TheftProtectionService.helperAccessibilityGranted
       if isDaemonConnected { helperInstallResult = nil }
     }
@@ -259,10 +263,16 @@ struct SettingsView: View {
             Image(systemName: "checkmark.circle.fill")
               .foregroundStyle(.green)
             Text("Helper Connected (v\(daemonVersion ?? "?"))")
+          } else if helperDisconnectedForUpdate {
+            Image(systemName: "xmark.circle.fill")
+              .foregroundStyle(.orange)
+            Text("Disconnected — helper too old (requires v\(Config.Daemon.minHelperVersion))")
           } else {
             Image(systemName: "xmark.circle")
               .foregroundStyle(.secondary)
             Text("Helper Not Connected")
+            Text("(requires v\(Config.Daemon.minHelperVersion)+)")
+              .font(.caption).foregroundStyle(.secondary)
           }
         }
         if !isDaemonConnected || helperNeedsUpdate {
@@ -275,7 +285,7 @@ struct SettingsView: View {
             .font(.callout)
             .disabled(isInstallingHelper)
             #else
-            Button(helperNeedsUpdate ? "Update Helper" : "Install Helper") {
+            Button(helperNeedsUpdate || helperDisconnectedForUpdate ? "Update Helper" : "Install Helper") {
               isInstallingHelper = true
               helperInstallResult = nil
               HelperInstallService.shared.autoInstall { success in
@@ -291,6 +301,15 @@ struct SettingsView: View {
             Spacer()
           }
         }
+        #if !APPSTORE
+        if isDaemonConnected && !helperNeedsUpdate && !isInstallingHelper {
+          HStack {
+            Spacer()
+            helperUpdateCheckButton
+            Spacer()
+          }
+        }
+        #endif
       } header: {
         Text("Helper Daemon")
       } footer: {
@@ -557,8 +576,10 @@ struct SettingsView: View {
     settings.autoUpdateEnabled = autoUpdateEnabled
     if autoUpdateEnabled {
       UpdateService.shared.startPeriodicChecks()
+      HelperInstallService.shared.startPeriodicHelperChecks()
     } else {
       UpdateService.shared.stopPeriodicChecks()
+      HelperInstallService.shared.stopPeriodicHelperChecks()
     }
     #endif
 
@@ -612,6 +633,27 @@ struct SettingsView: View {
       DispatchQueue.main.async {
         isCheckingForUpdates = false
       }
+    }
+  }
+
+  private func checkForHelperUpdates() {
+    isCheckingForHelperUpdates = true
+    HelperInstallService.shared.checkForHelperUpdates(silent: false) {
+      DispatchQueue.main.async {
+        isCheckingForHelperUpdates = false
+      }
+    }
+  }
+
+  @ViewBuilder
+  private var helperUpdateCheckButton: some View {
+    let title = isCheckingForHelperUpdates ? "Checking..." : "Check for Helper Updates"
+    if #available(macOS 26.0, *) {
+      Button(title) { checkForHelperUpdates() }
+        .buttonStyle(.glass).disabled(isCheckingForHelperUpdates).font(.callout)
+    } else {
+      Button(title) { checkForHelperUpdates() }
+        .buttonStyle(.borderless).disabled(isCheckingForHelperUpdates).font(.callout)
     }
   }
 

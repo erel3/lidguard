@@ -5,9 +5,23 @@ import SwiftUI
 final class HelperInstallService {
   static let shared = HelperInstallService()
 
+  enum HelperUpdateMode {
+    case required   // version < minHelperVersion
+    case optional   // version >= minHelperVersion but < latest GitHub release
+  }
+
   private let installQueue = DispatchQueue(label: "com.lidguard.helper.install", qos: .utility)
+  private let checkQueue = DispatchQueue(label: "com.lidguard.helper.update.check", qos: .utility)
+  private let settings = SettingsService.shared
   private var isInstalling = false
   private var updateWindow: NSWindow?
+  private var periodicTimer: DispatchSourceTimer?
+  private var initialCheckDone = false
+  var disconnectedForRequiredUpdate = false
+
+  /// Tracks the mode of the currently displayed update window for handleInstall progress view
+  private var currentUpdateMode: HelperUpdateMode = .required
+  private var currentLatestVersion: String?
 
   private var installDir: URL {
     FileManager.default.homeDirectoryForCurrentUser
@@ -25,25 +39,202 @@ final class HelperInstallService {
 
   private init() {}
 
+  // MARK: - Version Comparison
+
+  private func isNewer(_ remote: String, than local: String) -> Bool {
+    func parts(_ v: String) -> [Int] {
+      let clean = v.trimmingCharacters(in: CharacterSet(charactersIn: "v"))
+      return clean.split(separator: ".").compactMap { Int($0) }
+    }
+    let r = parts(remote), l = parts(local)
+    let count = max(r.count, l.count)
+    for i in 0..<count {
+      let rv = i < r.count ? r[i] : 0
+      let lv = i < l.count ? l[i] : 0
+      if rv != lv { return rv > lv }
+    }
+    return false
+  }
+
+  // MARK: - Periodic Helper Checks
+
+  func startPeriodicHelperChecks() {
+    #if APPSTORE
+    return
+    #else
+    guard settings.autoUpdateEnabled else { return }
+
+    if !initialCheckDone {
+      initialCheckDone = true
+      checkQueue.asyncAfter(deadline: .now() + 10) { [weak self] in
+        self?.checkForHelperUpdates(silent: true)
+      }
+    }
+
+    schedulePeriodicTimer()
+    #endif
+  }
+
+  func stopPeriodicHelperChecks() {
+    periodicTimer?.cancel()
+    periodicTimer = nil
+  }
+
+  #if !APPSTORE
+  private func schedulePeriodicTimer() {
+    periodicTimer?.cancel()
+
+    let interval = Config.GitHub.autoCheckInterval
+    let delay: TimeInterval
+
+    if let last = settings.lastHelperUpdateCheckDate {
+      delay = max(0, interval - Date().timeIntervalSince(last))
+    } else {
+      delay = interval
+    }
+
+    let timer = DispatchSource.makeTimerSource(queue: checkQueue)
+    timer.schedule(deadline: .now() + delay, repeating: interval)
+    timer.setEventHandler { [weak self] in
+      guard let self = self, self.settings.autoUpdateEnabled else { return }
+      self.checkForHelperUpdates(silent: true)
+    }
+    timer.resume()
+    periodicTimer = timer
+  }
+  #endif
+
+  // MARK: - Check for Helper Updates
+
+  #if !APPSTORE
+
+  func checkForHelperUpdates(silent: Bool, completion: (() -> Void)? = nil) {
+    guard let url = URL(string: Config.Daemon.helperReleasesURL) else {
+      completion?()
+      return
+    }
+
+    var request = URLRequest(url: url)
+    request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
+    request.setValue("LidGuard/\(Config.App.version)", forHTTPHeaderField: "User-Agent")
+    request.timeoutInterval = 15
+
+    URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
+      guard let self = self else { completion?(); return }
+
+      self.settings.lastHelperUpdateCheckDate = Date()
+
+      guard error == nil,
+            let httpResponse = response as? HTTPURLResponse,
+            (200...299).contains(httpResponse.statusCode),
+            let data = data,
+            let release = try? JSONDecoder().decode(GitHubReleaseInfo.self, from: data) else {
+        if !silent {
+          Logger.daemon.error("Failed to check for helper updates")
+          DispatchQueue.main.async { self.showHelperCheckError() }
+        }
+        completion?()
+        return
+      }
+
+      let latestVersion = release.tagName.trimmingCharacters(in: CharacterSet(charactersIn: "v"))
+
+      guard TheftProtectionService.daemonConnected,
+            let currentVersion = TheftProtectionService.daemonVersion else {
+        if !silent {
+          DispatchQueue.main.async { self.showHelperUpToDate() }
+        }
+        completion?()
+        return
+      }
+
+      let isRequired = TheftProtectionService.helperNeedsUpdate
+      let hasNewerRelease = self.isNewer(latestVersion, than: currentVersion)
+
+      guard isRequired || hasNewerRelease else {
+        if !silent {
+          DispatchQueue.main.async { self.showHelperUpToDate() }
+        }
+        completion?()
+        return
+      }
+
+      let mode: HelperUpdateMode = isRequired ? .required : .optional
+
+      // For optional updates in silent mode: respect skipped version
+      if mode == .optional && silent && self.settings.skippedHelperVersion == latestVersion {
+        Logger.daemon.info("Skipping helper update to \(latestVersion) (user skipped)")
+        completion?()
+        return
+      }
+
+      // Suppress helper update notification when app update is available (avoid double-nag)
+      if silent && UpdateService.shared.hasUpdateAvailable {
+        Logger.daemon.info("Suppressing helper update notification — app update available")
+        completion?()
+        return
+      }
+
+      DispatchQueue.main.async {
+        self.showUpdateWindow(currentVersion: currentVersion, latestVersion: latestVersion, mode: mode)
+      }
+      completion?()
+    }.resume()
+  }
+
+  private func showHelperUpToDate() {
+    let alert = NSAlert()
+    alert.messageText = "Helper Is Up to Date"
+    alert.informativeText = "Helper daemon v\(TheftProtectionService.daemonVersion ?? "?") is the latest version."
+    alert.alertStyle = .informational
+    alert.addButton(withTitle: "OK")
+    alert.runModal()
+  }
+
+  private func showHelperCheckError() {
+    let alert = NSAlert()
+    alert.messageText = "Helper Update Check Failed"
+    alert.informativeText = "Could not check for helper updates. Please try again later."
+    alert.alertStyle = .warning
+    alert.addButton(withTitle: "OK")
+    alert.runModal()
+  }
+
+  #endif
+
   // MARK: - Update Window
 
-  func showUpdateWindow(currentVersion: String?) {
+  func showUpdateWindow(currentVersion: String?, latestVersion: String? = nil, mode: HelperUpdateMode = .required) {
     DispatchQueue.main.async { [self] in
       if let existing = updateWindow, existing.isVisible {
         existing.makeKeyAndOrderFront(nil)
         return
       }
 
+      currentUpdateMode = mode
+      currentLatestVersion = latestVersion
+
       let view = HelperUpdateView(
         currentVersion: currentVersion ?? "unknown",
         requiredVersion: Config.Daemon.minHelperVersion,
+        latestVersion: latestVersion,
+        mode: mode,
         isInstalling: false,
         onInstall: { [weak self] in self?.handleInstall() },
-        onDismiss: { [weak self] in self?.updateWindow?.close() }
+        onSkip: mode == .optional ? { [weak self] in
+          if let v = latestVersion { self?.settings.skippedHelperVersion = v }
+          self?.updateWindow?.close()
+        } : nil,
+        onDismiss: { [weak self] in
+          if mode == .required {
+            self?.handleRequiredUpdateDismissed()
+          }
+          self?.updateWindow?.close()
+        }
       )
 
       let window = NSPanel(
-        contentRect: NSRect(x: 0, y: 0, width: 400, height: 240),
+        contentRect: NSRect(x: 0, y: 0, width: 400, height: mode == .optional ? 260 : 240),
         styleMask: [.titled, .closable, .nonactivatingPanel, .hudWindow],
         backing: .buffered,
         defer: false
@@ -61,6 +252,11 @@ final class HelperInstallService {
     }
   }
 
+  private func handleRequiredUpdateDismissed() {
+    disconnectedForRequiredUpdate = true
+    NotificationCenter.default.post(name: .helperUpdateDismissed, object: nil)
+  }
+
   private func handleInstall() {
     #if APPSTORE
     if let url = URL(string: Config.Daemon.helperBrowserURL) {
@@ -72,8 +268,11 @@ final class HelperInstallService {
     let progressView = HelperUpdateView(
       currentVersion: TheftProtectionService.daemonVersion ?? "unknown",
       requiredVersion: Config.Daemon.minHelperVersion,
+      latestVersion: currentLatestVersion,
+      mode: currentUpdateMode,
       isInstalling: true,
       onInstall: {},
+      onSkip: nil,
       onDismiss: {}
     )
     updateWindow?.contentView = NSHostingView(rootView: progressView)
@@ -177,6 +376,8 @@ final class HelperInstallService {
         // PKG post-install script handles: LaunchAgent plist, launchctl load, sudoers
         Logger.daemon.info("Helper daemon installed successfully")
         ActivityLog.logAsync(.system, "Helper daemon installed successfully")
+        disconnectedForRequiredUpdate = false
+        settings.skippedHelperVersion = nil
         NotificationCenter.default.post(name: .helperInstallCompleted, object: nil)
         completion?(true)
       } catch {
@@ -329,26 +530,37 @@ private struct GitHubAsset: Decodable {
 private struct HelperUpdateView: View {
   let currentVersion: String
   let requiredVersion: String
+  var latestVersion: String?
+  var mode: HelperInstallService.HelperUpdateMode = .required
   var isInstalling: Bool = false
   let onInstall: () -> Void
+  var onSkip: (() -> Void)?
   let onDismiss: () -> Void
 
   var body: some View {
     VStack(spacing: 16) {
       VStack(spacing: 8) {
-        Image(systemName: "arrow.triangle.2.circlepath")
+        Image(systemName: mode == .required ? "arrow.triangle.2.circlepath" : "arrow.up.circle")
           .font(.system(size: 40))
-          .foregroundStyle(.orange)
+          .foregroundStyle(mode == .required ? .orange : .blue)
 
-        Text("Helper Update Required")
+        Text(mode == .required ? "Helper Update Required" : "Helper Update Available")
           .font(.headline)
 
-        Text("Installed: v\(currentVersion) — Required: v\(requiredVersion)")
-          .font(.subheadline)
-          .foregroundStyle(.secondary)
+        if mode == .required {
+          Text("Installed: v\(currentVersion) — Required: v\(requiredVersion)")
+            .font(.subheadline)
+            .foregroundStyle(.secondary)
+        } else if let latest = latestVersion {
+          Text("Installed: v\(currentVersion) — Latest: v\(latest)")
+            .font(.subheadline)
+            .foregroundStyle(.secondary)
+        }
       }
 
-      Text("LidGuard requires a newer version of the helper daemon for full functionality. Some features may not work until the helper is updated.")
+      Text(mode == .required
+        ? "LidGuard requires a newer version of the helper daemon for full functionality. Some features may not work until the helper is updated."
+        : "A newer version of the helper daemon is available.")
         .multilineTextAlignment(.center)
         .foregroundStyle(.secondary)
         .padding(.horizontal)
@@ -367,6 +579,10 @@ private struct HelperUpdateView: View {
         HStack(spacing: 12) {
           Button("Not Now") { onDismiss() }
             .keyboardShortcut(.cancelAction)
+
+          if mode == .optional, let onSkip {
+            Button("Skip This Version") { onSkip() }
+          }
 
           #if APPSTORE
           if #available(macOS 26.0, *) {
@@ -392,7 +608,7 @@ private struct HelperUpdateView: View {
       }
     }
     .padding(20)
-    .frame(width: 400, height: 240)
+    .frame(width: 400, height: mode == .optional ? 260 : 240)
   }
 }
 

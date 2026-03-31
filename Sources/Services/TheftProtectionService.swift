@@ -31,6 +31,7 @@ final class TheftProtectionService {
   static private(set) var daemonConnected = false
   static private(set) var daemonVersion: String?
   static private(set) var helperNeedsUpdate = false
+  static private(set) var helperDisconnectedForUpdate = false
   static var helperAccessibilityGranted = false
 
   weak var delegate: TheftProtectionDelegate?
@@ -116,6 +117,19 @@ final class TheftProtectionService {
     ) { [weak self] _ in
       guard let self, self.daemonClient.isConnected else { return }
       self.daemonClient.getStatus()
+    }
+
+    NotificationCenter.default.addObserver(
+      forName: .helperUpdateDismissed, object: nil, queue: .main
+    ) { [weak self] _ in
+      guard let self else { return }
+      self.daemonClient.disconnect()
+      TheftProtectionService.helperDisconnectedForUpdate = true
+      TheftProtectionService.daemonConnected = false
+      TheftProtectionService.daemonVersion = nil
+      NotificationCenter.default.post(name: .daemonConnectionChanged, object: nil)
+      Logger.daemon.warning("Disconnected from helper — required update was dismissed")
+      ActivityLog.logAsync(.system, "Helper disconnected — update required but dismissed")
     }
 
     NotificationCenter.default.addObserver(
@@ -640,6 +654,8 @@ extension TheftProtectionService: DaemonIPCDelegate {
     TheftProtectionService.daemonConnected = true
     TheftProtectionService.daemonVersion = version
     TheftProtectionService.helperNeedsUpdate = Self.isHelperOutdated(version)
+    TheftProtectionService.helperDisconnectedForUpdate = false
+    HelperInstallService.shared.disconnectedForRequiredUpdate = false
     NotificationCenter.default.post(name: .daemonConnectionChanged, object: nil)
     NotificationCenter.default.post(name: .helperVersionChanged, object: nil)
     Logger.daemon.info("Connected to helper daemon (v\(version ?? "unknown"))")
@@ -648,7 +664,7 @@ extension TheftProtectionService: DaemonIPCDelegate {
     if TheftProtectionService.helperNeedsUpdate {
       Logger.daemon.warning("Helper daemon outdated (v\(version ?? "?"), requires v\(Config.Daemon.minHelperVersion))")
       ActivityLog.logAsync(.system, "Helper daemon needs update (v\(version ?? "?") < v\(Config.Daemon.minHelperVersion))")
-      HelperInstallService.shared.showUpdateWindow(currentVersion: version)
+      HelperInstallService.shared.showUpdateWindow(currentVersion: version, mode: .required)
     }
     client.getStatus()
     // Re-sync state: if protection is active, re-send enables

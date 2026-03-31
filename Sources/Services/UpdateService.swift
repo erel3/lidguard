@@ -11,6 +11,7 @@ final class UpdateService {
   private var periodicTimer: DispatchSourceTimer?
   private var updateWindow: NSWindow?
   private var initialCheckDone = false
+  private(set) var hasUpdateAvailable = false
 
   private init() {}
 
@@ -128,6 +129,7 @@ final class UpdateService {
       let storeURL = result.trackViewUrl
       let releaseNotes = result.releaseNotes ?? "Bug fixes and improvements."
 
+      self.hasUpdateAvailable = true
       DispatchQueue.main.async {
         self.showUpdateWindow(version: result.version, releaseNotes: releaseNotes, storeURL: storeURL)
       }
@@ -146,6 +148,7 @@ final class UpdateService {
       changelog: releaseNotes,
       storeURL: storeURL,
       onDismiss: { [weak self] in
+        self?.hasUpdateAvailable = false
         self?.updateWindow?.close()
       }
     )
@@ -237,6 +240,7 @@ final class UpdateService {
         return "\(header)\n\(body)"
       }.joined(separator: "\n\n")
 
+      self.hasUpdateAvailable = true
       DispatchQueue.main.async {
         self.showUpdateWindow(release: latest, changelog: combinedChangelog)
       }
@@ -257,10 +261,12 @@ final class UpdateService {
         self?.installUpdate(release: release)
       },
       onSkip: { [weak self] in
+        self?.hasUpdateAvailable = false
         self?.settings.skippedVersion = release.version
         self?.updateWindow?.close()
       },
       onDismiss: { [weak self] in
+        self?.hasUpdateAvailable = false
         self?.updateWindow?.close()
       }
     )
@@ -331,6 +337,7 @@ final class UpdateService {
           resultingItemURL: nil
         )
 
+        self.hasUpdateAvailable = false
         self.settings.skippedVersion = nil
         try? FileManager.default.removeItem(at: tempDir)
         ActivityLog.logAsync(.system, "Update to v\(release.version) installed")
