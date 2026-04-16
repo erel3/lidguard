@@ -66,7 +66,11 @@ struct TriggersTabView: View {
       }
       #if !APPSTORE
       if motionSupported && triggerMotionDetect {
-        Text("Motion detection triggers theft mode when the Mac is picked up, tilted, or carried. Apple Silicon only. 10-second grace period after arming.")
+        Text(
+          "Motion detection triggers theft mode when the Mac is picked up, "
+          + "tilted, or carried. Apple Silicon only. Brief grace period "
+          + "after arming while the baseline calibrates."
+        )
       }
       #endif
     }

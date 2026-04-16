@@ -66,7 +66,9 @@ final class TheftProtectionService {
   /// Grace period after arming (or re-arming from theft mode) during which
   /// motion triggers are suppressed, so the baseline has a chance to
   /// calibrate without capturing the owner's hands-on-laptop gesture.
-  static let motionArmGrace: TimeInterval = 10
+  /// ~500ms covers the TCP round-trip, SPU wake, and calibration; the
+  /// rest is slack for the user to let go of the lid.
+  static let motionArmGrace: TimeInterval = 3
 
   private(set) var state: ProtectionState = .disabled
 
