@@ -12,11 +12,14 @@ enum ProtectionState {
 enum TheftTrigger {
   case lidClosed
   case powerDisconnected
+  case motionDetected(String)
 
   var description: String {
     switch self {
     case .lidClosed: return "Lid closed"
     case .powerDisconnected: return "Power disconnected"
+    case .motionDetected(let detail):
+      return detail.isEmpty ? "Motion detected" : "Motion detected (\(detail))"
     }
   }
 }
@@ -28,11 +31,14 @@ protocol TheftProtectionDelegate: AnyObject {
 }
 
 final class TheftProtectionService {
-  static private(set) var daemonConnected = false
-  static private(set) var daemonVersion: String?
-  static private(set) var helperNeedsUpdate = false
-  static private(set) var helperDisconnectedForUpdate = false
+  // Daemon connection state — mutated only by TheftProtectionService
+  // and its +Daemon extension (same module). Readable elsewhere.
+  static var daemonConnected = false
+  static var daemonVersion: String?
+  static var helperNeedsUpdate = false
+  static var helperDisconnectedForUpdate = false
   static var helperAccessibilityGranted = false
+  static var daemonMotionSupported = true
 
   weak var delegate: TheftProtectionDelegate?
 
@@ -48,13 +54,19 @@ final class TheftProtectionService {
   private let bluetoothProximityService = BluetoothProximityService()
 
   private var lastManualDisarmTime: Date?
+  var lastArmTime: Date?
   private var trackingTimer: DispatchSourceTimer?
   private let trackingQueue = DispatchQueue(label: "com.lidguard.tracking", qos: .userInitiated)
   private var updateCount = 0
-  private var currentTrigger: TheftTrigger?
+  private(set) var currentTrigger: TheftTrigger?
   private var stateBeforeTheft: ProtectionState?
   private var offlineSirenTimer: DispatchSourceTimer?
   private var telegramSucceededInTheftMode = false
+
+  /// Grace period after arming (or re-arming from theft mode) during which
+  /// motion triggers are suppressed, so the baseline has a chance to
+  /// calibrate without capturing the owner's hands-on-laptop gesture.
+  static let motionArmGrace: TimeInterval = 10
 
   private(set) var state: ProtectionState = .disabled
 
@@ -90,6 +102,14 @@ final class TheftProtectionService {
     ) { [weak self] _ in
       self?.globalShortcutService.restart()
     }
+
+    #if !APPSTORE
+    NotificationCenter.default.addObserver(
+      forName: .motionSettingsChanged, object: nil, queue: .main
+    ) { [weak self] _ in
+      self?.handleMotionSettingsChange()
+    }
+    #endif
 
     NotificationCenter.default.addObserver(
       forName: .bluetoothSettingsChanged, object: nil, queue: .main
@@ -179,6 +199,9 @@ final class TheftProtectionService {
     bluetoothProximityService.stop()
     daemonClient.disablePmset()
     daemonClient.disablePowerButton()
+    #if !APPSTORE
+    daemonClient.disableMotionMonitoring()
+    #endif
     daemonClient.hideLockScreen()
     daemonClient.disconnect()
   }
@@ -189,6 +212,9 @@ final class TheftProtectionService {
     if settings.triggerLidClose { result.append("lid close") }
     if settings.triggerPowerDisconnect { result.append("power disconnect") }
     if settings.triggerPowerButton { result.append("power button") }
+    #if !APPSTORE
+    if settings.triggerMotionDetect { result.append("motion") }
+    #endif
     return result
   }
 
@@ -216,7 +242,40 @@ final class TheftProtectionService {
     // Daemon features
     if settings.behaviorLidCloseSleep { daemonClient.enablePmset() }
     if settings.triggerPowerButton { daemonClient.enablePowerButton() }
+    #if !APPSTORE
+    if settings.triggerMotionDetect && daemonClient.motionSupported {
+      daemonClient.enableMotionMonitoring()
+    }
+    #endif
+    lastArmTime = Date()
   }
+
+  /// Re-arm motion monitoring with a fresh baseline. Called after returning
+  /// from theft mode — the laptop may have been repositioned while in theft
+  /// mode, so the old baseline would cause an immediate re-trigger.
+  private func recalibrateMotion() {
+    #if !APPSTORE
+    guard SettingsService.shared.triggerMotionDetect && daemonClient.motionSupported else { return }
+    daemonClient.disableMotionMonitoring()
+    daemonClient.enableMotionMonitoring()
+    lastArmTime = Date()
+    #endif
+  }
+
+  #if !APPSTORE
+  /// Apply a mid-arm toggle of the motion setting. Only meaningful when
+  /// protection is actively armed — otherwise startMonitors/disableProtection
+  /// handle lifecycle on their own.
+  private func handleMotionSettingsChange() {
+    guard state == .enabled || state == .enabledBluetooth else { return }
+    if SettingsService.shared.triggerMotionDetect && daemonClient.motionSupported {
+      daemonClient.enableMotionMonitoring()
+      lastArmTime = Date()
+    } else {
+      daemonClient.disableMotionMonitoring()
+    }
+  }
+  #endif
 
   func enableProtection(notify: Bool = true, lockScreen: Bool = false) {
     guard state == .disabled else { return }
@@ -284,7 +343,11 @@ final class TheftProtectionService {
     sleepPrevention.disable()
     daemonClient.disablePmset()
     daemonClient.disablePowerButton()
+    #if !APPSTORE
+    daemonClient.disableMotionMonitoring()
+    #endif
     daemonClient.hideLockScreen()
+    lastArmTime = nil
     Logger.theft.info("Protection disabled")
 
     let method = remote ? "Telegram" : "Touch ID"
@@ -320,6 +383,12 @@ final class TheftProtectionService {
     updateCount = 0
     Logger.theft.warning("THEFT MODE ACTIVATED - \(trigger.description)")
     ActivityLog.logAsync(.theft, "THEFT MODE ACTIVATED - \(trigger.description)")
+    // Stop motion monitoring while in theft mode (the main-app gate would
+    // drop events anyway, but this saves helper CPU and log spam).
+    // On deactivate, recalibrateMotion() restarts it with a fresh baseline.
+    #if !APPSTORE
+    daemonClient.disableMotionMonitoring()
+    #endif
 
     // System lock screen + overlay message
     let settings = SettingsService.shared
@@ -364,6 +433,7 @@ final class TheftProtectionService {
     cancelOfflineSirenTimer()
     telegramSucceededInTheftMode = false
     daemonClient.hideLockScreen()
+    recalibrateMotion()  // laptop may have been repositioned during theft
     Logger.theft.info("Theft mode deactivated")
 
     let method = remote ? "Telegram" : "Touch ID"
@@ -566,7 +636,16 @@ extension TheftProtectionService: LidMonitorDelegate {
 
 // MARK: - TelegramCommandDelegate
 extension TheftProtectionService: TelegramCommandDelegate {
+  // Telegram commands arrive on `com.lidguard.telegram.commands` (utility
+  // queue, intentional). State mutations must happen on main so
+  // `currentTrigger` and other state are read/written on a single thread.
   func telegramCommandReceived(_ command: TelegramCommand) {
+    DispatchQueue.main.async { [weak self] in
+      self?.handleTelegramCommand(command)
+    }
+  }
+
+  private func handleTelegramCommand(_ command: TelegramCommand) {
     switch command {
     case .stop, .safe:
       deactivateTheftMode(remote: true)
@@ -631,6 +710,8 @@ extension TheftProtectionService: SleepWakeDelegate {
     }
     bluetoothProximityService.resume()
     commandService.resume()
+    // Laptop may have been moved during sleep — rebaseline motion.
+    recalibrateMotion()
   }
 
   func shouldDenySleep() -> Bool {
@@ -645,77 +726,6 @@ extension TheftProtectionService: PowerMonitorDelegate {
     guard SettingsService.shared.triggerPowerDisconnect else { return }
     ActivityLog.logAsync(.trigger, "Power disconnected detected")
     activateTheftMode(trigger: .powerDisconnected)
-  }
-}
-
-// MARK: - DaemonIPCDelegate
-extension TheftProtectionService: DaemonIPCDelegate {
-  func daemonDidConnect(_ client: DaemonIPCClient, version: String?) {
-    TheftProtectionService.daemonConnected = true
-    TheftProtectionService.daemonVersion = version
-    TheftProtectionService.helperNeedsUpdate = Self.isHelperOutdated(version)
-    TheftProtectionService.helperDisconnectedForUpdate = false
-    HelperInstallService.shared.disconnectedForRequiredUpdate = false
-    NotificationCenter.default.post(name: .daemonConnectionChanged, object: nil)
-    NotificationCenter.default.post(name: .helperVersionChanged, object: nil)
-    Logger.daemon.info("Connected to helper daemon (v\(version ?? "unknown"))")
-    ActivityLog.logAsync(.system, "Helper daemon connected (v\(version ?? "unknown"))")
-
-    if TheftProtectionService.helperNeedsUpdate {
-      Logger.daemon.warning("Helper daemon outdated (v\(version ?? "?"), requires v\(Config.Daemon.minHelperVersion))")
-      ActivityLog.logAsync(.system, "Helper daemon needs update (v\(version ?? "?") < v\(Config.Daemon.minHelperVersion))")
-      HelperInstallService.shared.showUpdateWindow(currentVersion: version, mode: .required)
-    }
-    client.getStatus()
-    // Re-sync state: if protection is active, re-send enables
-    if state == .enabled || state == .enabledBluetooth || state == .theftMode {
-      let settings = SettingsService.shared
-      if settings.behaviorLidCloseSleep { client.enablePmset() }
-      if settings.triggerPowerButton { client.enablePowerButton() }
-      if state == .theftMode && settings.lockScreenOnTheftMode && settings.behaviorLockScreen {
-        let name = settings.contactName ?? ""
-        let phone = settings.contactPhone ?? ""
-        client.showLockScreen(contactName: name, contactPhone: phone, message: "STOLEN DEVICE")
-      }
-    }
-  }
-
-  func daemonDidDisconnect(_ client: DaemonIPCClient) {
-    TheftProtectionService.daemonConnected = false
-    TheftProtectionService.daemonVersion = nil
-    TheftProtectionService.helperAccessibilityGranted = false
-    NotificationCenter.default.post(name: .daemonConnectionChanged, object: nil)
-    Logger.daemon.info("Disconnected from helper daemon")
-    ActivityLog.logAsync(.system, "Helper daemon disconnected")
-  }
-
-  func daemonDidReceiveStatus(_ client: DaemonIPCClient, accessibilityGranted: Bool) {
-    TheftProtectionService.helperAccessibilityGranted = accessibilityGranted
-    NotificationCenter.default.post(name: .helperStatusChanged, object: nil)
-  }
-
-  private static func isHelperOutdated(_ version: String?) -> Bool {
-    guard let version else { return true }
-    let minVersion = Config.Daemon.minHelperVersion
-    func parts(_ v: String) -> [Int] {
-      v.split(separator: ".").compactMap { Int($0) }
-    }
-    let remote = parts(version)
-    let required = parts(minVersion)
-    let count = max(remote.count, required.count)
-    for i in 0..<count {
-      let r = i < remote.count ? remote[i] : 0
-      let m = i < required.count ? required[i] : 0
-      if r != m { return r < m }
-    }
-    return false
-  }
-
-  func daemonDidReceivePowerButtonPress(_ client: DaemonIPCClient) {
-    guard state != .disabled else { return }
-    guard SettingsService.shared.triggerPowerButton else { return }
-    ActivityLog.logAsync(.trigger, "Power button pressed detected")
-    sendShutdownAlert(blocked: false)
   }
 }
 

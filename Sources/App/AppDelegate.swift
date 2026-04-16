@@ -462,7 +462,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
       showEyeOverlay(style: .eyeOpenBluetooth)
 
     case .theftMode:
-      statusMenuItem.title = "THEFT MODE ACTIVE"
+      let cause = theftProtection.currentTrigger?.description
+      statusMenuItem.title = cause.map { "THEFT MODE — \($0)" } ?? "THEFT MODE ACTIVE"
       statusMenuItem.image = menuSymbol("exclamationmark.triangle.fill", color: .systemRed)
       toggleMenuItem.title = "Deactivate Theft Mode"
       toggleMenuItem.image = menuSymbol("lock.open", color: .systemOrange)

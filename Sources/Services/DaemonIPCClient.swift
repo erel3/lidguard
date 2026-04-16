@@ -7,11 +7,14 @@ protocol DaemonIPCDelegate: AnyObject {
   func daemonDidDisconnect(_ client: DaemonIPCClient)
   func daemonDidReceiveStatus(_ client: DaemonIPCClient, accessibilityGranted: Bool)
   func daemonDidReceivePowerButtonPress(_ client: DaemonIPCClient)
+  func daemonDidDetectMotion(_ client: DaemonIPCClient, detail: String, session: UInt64)
+  func daemonDidUpdateMotionSupport(_ client: DaemonIPCClient, supported: Bool)
 }
 
 protocol DaemonIPC: AnyObject {
   var delegate: DaemonIPCDelegate? { get set }
   var isConnected: Bool { get }
+  var motionSupported: Bool { get }
   func connect()
   func reconnectNow()
   func disconnect()
@@ -22,6 +25,8 @@ protocol DaemonIPC: AnyObject {
   func hideLockScreen()
   func enablePowerButton()
   func disablePowerButton()
+  func enableMotionMonitoring()
+  func disableMotionMonitoring()
   func getStatus()
 }
 
@@ -48,6 +53,17 @@ final class DaemonIPCClient: DaemonIPC {
   var isConnected: Bool {
     queue.sync { state == .connected }
   }
+
+  private var _motionSupported: Bool = true  // optimistic until helper reports otherwise
+  var motionSupported: Bool {
+    queue.sync { _motionSupported }
+  }
+
+  // Most recently observed MotionMonitor session — monotonically increasing.
+  // motion_detected events with a session below this are stale (in-flight
+  // during a recalibrate stop+start) and must be dropped.
+  private var _motionSession: UInt64 = 0
+  var motionSession: UInt64 { queue.sync { _motionSession } }
 
   // MARK: - Public API
 
@@ -108,6 +124,14 @@ final class DaemonIPCClient: DaemonIPC {
 
   func disablePowerButton() {
     send(IPCCommand(type: "disable_power_button"))
+  }
+
+  func enableMotionMonitoring() {
+    send(IPCCommand(type: "start_motion_monitoring"))
+  }
+
+  func disableMotionMonitoring() {
+    send(IPCCommand(type: "stop_motion_monitoring"))
   }
 
   func getStatus() {
@@ -277,21 +301,7 @@ final class DaemonIPCClient: DaemonIPC {
   private func handleMessage(_ message: IPCMessage) {
     switch message.type {
     case "auth_result":
-      if message.success == true {
-        state = .connected
-        reconnectDelay = Config.Daemon.reconnectBaseDelay
-        let version = message.version
-        Logger.daemon.info("Authenticated with helper daemon (v\(version ?? "unknown"))")
-        flushPendingCommands()
-        notifyMainThread { [weak self] in
-          guard let self else { return }
-          self.delegate?.daemonDidConnect(self, version: version)
-        }
-      } else {
-        Logger.daemon.error("Authentication failed — code signing verification rejected")
-        shouldReconnect = false
-        tearDown()
-      }
+      handleAuthResult(message)
 
     case "power_button_pressed":
       notifyMainThread { [weak self] in
@@ -299,22 +309,71 @@ final class DaemonIPCClient: DaemonIPC {
         self.delegate?.daemonDidReceivePowerButtonPress(self)
       }
 
-    case "status":
-      let pmsetOn = message.pmset ?? false
-      let lockOn = message.lockScreen ?? false
-      let powerOn = message.powerButton ?? false
-      let axGranted = message.accessibilityGranted ?? false
-      Logger.daemon.info("Daemon status — pmset: \(pmsetOn), lockScreen: \(lockOn), powerButton: \(powerOn), ax: \(axGranted)")
+    case "motion_detected":
+      let detail = message.motionDetail ?? ""
+      let session = message.motionSession ?? 0
+      // Drop events from older sessions (in-flight during a recalibrate).
+      // Forward-jump cases are handled: a new session updates our cache.
+      if session < _motionSession {
+        Logger.daemon.info("Dropping stale motion_detected (session=\(session) < \(self._motionSession))")
+        return
+      }
+      _motionSession = session
       notifyMainThread { [weak self] in
         guard let self else { return }
-        self.delegate?.daemonDidReceiveStatus(self, accessibilityGranted: axGranted)
+        self.delegate?.daemonDidDetectMotion(self, detail: detail, session: session)
       }
+
+    case "status":
+      handleStatus(message)
 
     case "error":
       Logger.daemon.error("Daemon error: \(message.message ?? "unknown")")
 
     default:
       Logger.daemon.warning("Unknown message type: \(message.type)")
+    }
+  }
+
+  private func handleAuthResult(_ message: IPCMessage) {
+    if message.success == true {
+      state = .connected
+      reconnectDelay = Config.Daemon.reconnectBaseDelay
+      let version = message.version
+      Logger.daemon.info("Authenticated with helper daemon (v\(version ?? "unknown"))")
+      flushPendingCommands()
+      notifyMainThread { [weak self] in
+        guard let self else { return }
+        self.delegate?.daemonDidConnect(self, version: version)
+      }
+    } else {
+      Logger.daemon.error("Authentication failed — code signing verification rejected")
+      shouldReconnect = false
+      tearDown()
+    }
+  }
+
+  private func handleStatus(_ message: IPCMessage) {
+    let pmsetOn = message.pmset ?? false
+    let lockOn = message.lockScreen ?? false
+    let powerOn = message.powerButton ?? false
+    let axGranted = message.accessibilityGranted ?? false
+    let motionOn = message.motion ?? false
+    let motionSupport = message.motionSupported ?? true
+    let previousSupport = _motionSupported
+    _motionSupported = motionSupport
+    if let session = message.motionSession, session > _motionSession {
+      _motionSession = session
+    }
+    Logger.daemon.info(
+      "Daemon status — pmset: \(pmsetOn), lockScreen: \(lockOn), powerButton: \(powerOn), ax: \(axGranted), motion: \(motionOn), motionSup: \(motionSupport)"
+    )
+    notifyMainThread { [weak self] in
+      guard let self else { return }
+      self.delegate?.daemonDidReceiveStatus(self, accessibilityGranted: axGranted)
+      if motionSupport != previousSupport {
+        self.delegate?.daemonDidUpdateMotionSupport(self, supported: motionSupport)
+      }
     }
   }
 

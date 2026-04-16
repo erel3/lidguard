@@ -44,8 +44,9 @@ struct SettingsView: View {
   @State private var triggerLidClose: Bool = true
   @State private var triggerPowerDisconnect: Bool = true
   @State private var triggerPowerButton: Bool = false
+  @State private var triggerMotionDetect: Bool = false
+  @State private var motionSupported: Bool = true
 
-  // Global Shortcut
   // Protection
   @State private var behaviorSleepPrevention: Bool = true
   @State private var behaviorLidCloseSleep: Bool = true
@@ -151,6 +152,7 @@ struct SettingsView: View {
     }
     .onReceive(NotificationCenter.default.publisher(for: .helperStatusChanged)) { _ in
       helperAccessibilityGranted = TheftProtectionService.helperAccessibilityGranted
+      motionSupported = TheftProtectionService.daemonMotionSupported
     }
     .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
       NotificationCenter.default.post(name: .helperStatusRequested, object: nil)
@@ -352,46 +354,17 @@ struct SettingsView: View {
   // MARK: - Triggers Tab
 
   private var triggersTab: some View {
-    Form {
-      Section {
-        Toggle("Lid close detection", isOn: $triggerLidClose)
-        Toggle("Power disconnect detection", isOn: $triggerPowerDisconnect)
-        helperToggle("Power button detection", isOn: $triggerPowerButton)
-          .onChange(of: triggerPowerButton) { _, newValue in
-            if newValue && !helperAccessibilityGranted {
-              triggerPowerButton = false
-              openAccessibilitySettings()
-            }
-          }
-      } header: {
-        Text("Theft Mode Triggers")
-      } footer: {
-        if isDaemonConnected && !helperAccessibilityGranted {
-          HStack(spacing: 4) {
-            Text("Grant Accessibility permission to enable power button detection.")
-            Button("Open Settings") { openAccessibilitySettings() }
-              .buttonStyle(.link)
-          }
-          .font(.footnote)
-          .foregroundStyle(.secondary)
-        }
-      }
-
-      Section {
-        KeyboardShortcuts.Recorder("Shortcut", name: .toggleProtection)
-        helperToggle("Lock screen when arming", isOn: $lockScreenOnShortcut)
-      } header: {
-        Text("Global Keyboard Shortcut")
-      } footer: {
-        Text("Press the shortcut anywhere to toggle protection. Requires Input Monitoring permission.")
-          .font(.footnote)
-          .foregroundStyle(.secondary)
-      }
-
-      Section { Text("💡 Right-click the menu bar icon to quickly toggle protection.")
-          .font(.footnote).foregroundStyle(.secondary) }
-    }
-    .formStyle(.grouped)
+    TriggersTabView(
+      triggerLidClose: $triggerLidClose,
+      triggerPowerDisconnect: $triggerPowerDisconnect,
+      triggerPowerButton: $triggerPowerButton,
+      triggerMotionDetect: $triggerMotionDetect,
+      lockScreenOnShortcut: $lockScreenOnShortcut,
+      isDaemonConnected: isDaemonConnected,
+      helperAccessibilityGranted: helperAccessibilityGranted,
+      motionSupported: motionSupported,
+      onOpenAccessibility: openAccessibilitySettings
+    )
   }
 
   // MARK: - Protection Tab
@@ -505,6 +478,7 @@ struct SettingsView: View {
     triggerLidClose = settings.triggerLidClose
     triggerPowerDisconnect = settings.triggerPowerDisconnect
     triggerPowerButton = settings.triggerPowerButton
+    triggerMotionDetect = settings.triggerMotionDetect
     behaviorSleepPrevention = settings.behaviorSleepPrevention
     behaviorLidCloseSleep = settings.behaviorLidCloseSleep
     behaviorShutdownBlocking = settings.behaviorShutdownBlocking
@@ -546,6 +520,7 @@ struct SettingsView: View {
     settings.triggerLidClose = triggerLidClose
     settings.triggerPowerDisconnect = triggerPowerDisconnect
     settings.triggerPowerButton = triggerPowerButton
+    settings.triggerMotionDetect = triggerMotionDetect
     NotificationCenter.default.post(name: .shortcutSettingsChanged, object: nil)
     settings.behaviorSleepPrevention = behaviorSleepPrevention
     settings.behaviorLidCloseSleep = behaviorLidCloseSleep

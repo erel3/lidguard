@@ -19,5 +19,9 @@ struct IPCMessage: Codable {
   var lockScreen: Bool?
   var powerButton: Bool?
   var accessibilityGranted: Bool?
+  var motion: Bool?
+  var motionSupported: Bool?
+  var motionDetail: String?
+  var motionSession: UInt64?
   var message: String?
 }

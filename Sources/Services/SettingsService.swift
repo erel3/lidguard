@@ -6,6 +6,7 @@ import Foundation
 extension Notification.Name {
   static let bluetoothSettingsChanged = Notification.Name("com.lidguard.bluetoothSettingsChanged")
   static let telegramSettingsChanged = Notification.Name("com.lidguard.telegramSettingsChanged")
+  static let motionSettingsChanged = Notification.Name("com.lidguard.motionSettingsChanged")
   static let daemonConnectionChanged = Notification.Name("com.lidguard.daemonConnectionChanged")
   static let helperVersionChanged = Notification.Name("com.lidguard.helperVersionChanged")
   static let helperInstallCompleted = Notification.Name("com.lidguard.helperInstallCompleted")
@@ -31,6 +32,7 @@ final class SettingsService {
     static let triggerLidClose = "lidguard.triggerLidClose"
     static let triggerPowerDisconnect = "lidguard.triggerPowerDisconnect"
     static let triggerPowerButton = "lidguard.triggerPowerButton"
+    static let triggerMotionDetect = "lidguard.triggerMotionDetect"
 
     // Global Shortcut
     static let shortcutEnabled = "lidguard.shortcutEnabled"
@@ -163,6 +165,22 @@ final class SettingsService {
   var triggerPowerButton: Bool {
     get { defaults.object(forKey: Keys.triggerPowerButton) as? Bool ?? false }
     set { defaults.set(newValue, forKey: Keys.triggerPowerButton) }
+  }
+
+  var triggerMotionDetect: Bool {
+    get {
+      #if APPSTORE
+      return false
+      #else
+      return defaults.object(forKey: Keys.triggerMotionDetect) as? Bool ?? false
+      #endif
+    }
+    set {
+      #if !APPSTORE
+      defaults.set(newValue, forKey: Keys.triggerMotionDetect)
+      NotificationCenter.default.post(name: .motionSettingsChanged, object: nil)
+      #endif
+    }
   }
 
   // MARK: - Global Shortcut
@@ -367,6 +385,7 @@ final class SettingsService {
     defaults.removeObject(forKey: Keys.triggerLidClose)
     defaults.removeObject(forKey: Keys.triggerPowerDisconnect)
     defaults.removeObject(forKey: Keys.triggerPowerButton)
+    defaults.removeObject(forKey: Keys.triggerMotionDetect)
     defaults.removeObject(forKey: Keys.shortcutEnabled)
     defaults.removeObject(forKey: Keys.behaviorSleepPrevention)
     defaults.removeObject(forKey: Keys.behaviorLidCloseSleep)
