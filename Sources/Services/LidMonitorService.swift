@@ -15,19 +15,21 @@ final class LidMonitorService {
   private var lastState: Bool?
   private var timer: DispatchSourceTimer?
   private let checkInterval: TimeInterval
-  private let queue = DispatchQueue(label: "com.lidguard.lidmonitor", qos: .userInitiated)
 
   init(checkInterval: TimeInterval = Config.Tracking.lidCheckInterval) {
     self.checkInterval = checkInterval
   }
 
   func start() {
-    timer = DispatchSource.makeTimerSource(queue: queue)
-    timer?.schedule(deadline: .now(), repeating: checkInterval)
-    timer?.setEventHandler { [weak self] in
-      self?.checkState()
+    let newTimer = DispatchSource.makeTimerSource(queue: .main)
+    newTimer.schedule(deadline: .now(), repeating: checkInterval)
+    newTimer.setEventHandler { [weak self] in
+      MainActor.assumeIsolated {
+        self?.checkState()
+      }
     }
-    timer?.resume()
+    newTimer.resume()
+    timer = newTimer
     Logger.lid.info("Started")
   }
 
@@ -39,32 +41,24 @@ final class LidMonitorService {
   }
 
   var isClosed: Bool {
-    getClamshellState()
+    Self.getClamshellState()
   }
 
   private func checkState() {
-    let currentState = getClamshellState()
+    let currentState = Self.getClamshellState()
 
     if let last = lastState {
       if !last && currentState {
-        CFRunLoopPerformBlock(CFRunLoopGetMain(), CFRunLoopMode.commonModes.rawValue) { [weak self] in
-          guard let self = self else { return }
-          self.delegate?.lidMonitorDidDetectClose(self)
-        }
-        CFRunLoopWakeUp(CFRunLoopGetMain())
+        delegate?.lidMonitorDidDetectClose(self)
       } else if last && !currentState {
-        CFRunLoopPerformBlock(CFRunLoopGetMain(), CFRunLoopMode.commonModes.rawValue) { [weak self] in
-          guard let self = self else { return }
-          self.delegate?.lidMonitorDidDetectOpen(self)
-        }
-        CFRunLoopWakeUp(CFRunLoopGetMain())
+        delegate?.lidMonitorDidDetectOpen(self)
       }
     }
 
     lastState = currentState
   }
 
-  private func getClamshellState() -> Bool {
+  nonisolated private static func getClamshellState() -> Bool {
     let service = IOServiceGetMatchingService(kIOMainPortDefault, IOServiceMatching("IOPMrootDomain"))
     guard service != 0 else { return false }
     defer { IOObjectRelease(service) }

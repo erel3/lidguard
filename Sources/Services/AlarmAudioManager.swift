@@ -16,7 +16,6 @@ final class AlarmAudioManager {
 
   private var monitoredDeviceID: AudioObjectID = 0
   private var volumeListenerBlock: AudioObjectPropertyListenerBlock?
-  private let volumeMonitorQueue = DispatchQueue(label: "com.lidguard.volumemonitor", qos: .userInitiated)
 
   private init() {
     restoreSystemVolumeIfNeeded()
@@ -288,9 +287,11 @@ final class AlarmAudioManager {
     monitoredDeviceID = deviceID
 
     let block: AudioObjectPropertyListenerBlock = { [weak self] _, _ in
-      guard let self = self, self.isPlaying else { return }
-      if let current = self.getSystemVolume(), current < 1.0 {
-        self.setSystemVolume(1.0)
+      MainActor.assumeIsolated {
+        guard let self, self.isPlaying else { return }
+        if let current = self.getSystemVolume(), current < 1.0 {
+          self.setSystemVolume(1.0)
+        }
       }
     }
     volumeListenerBlock = block
@@ -300,7 +301,7 @@ final class AlarmAudioManager {
       mScope: kAudioDevicePropertyScopeOutput,
       mElement: kAudioObjectPropertyElementMain
     )
-    AudioObjectAddPropertyListenerBlock(deviceID, &volAddress, volumeMonitorQueue, block)
+    AudioObjectAddPropertyListenerBlock(deviceID, &volAddress, .main, block)
   }
 
   /// Removes the CoreAudio volume listener.
@@ -312,7 +313,7 @@ final class AlarmAudioManager {
       mScope: kAudioDevicePropertyScopeOutput,
       mElement: kAudioObjectPropertyElementMain
     )
-    AudioObjectRemovePropertyListenerBlock(monitoredDeviceID, &volAddress, volumeMonitorQueue, block)
+    AudioObjectRemovePropertyListenerBlock(monitoredDeviceID, &volAddress, .main, block)
     monitoredDeviceID = 0
     volumeListenerBlock = nil
   }

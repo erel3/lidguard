@@ -58,7 +58,6 @@ final class TheftProtectionService {
   private var lastManualDisarmTime: Date?
   var lastArmTime: Date?
   private var trackingTimer: DispatchSourceTimer?
-  private let trackingQueue = DispatchQueue(label: "com.lidguard.tracking", qos: .userInitiated)
   private var updateCount = 0
   private(set) var currentTrigger: TheftTrigger?
   private var stateBeforeTheft: ProtectionState?
@@ -608,12 +607,14 @@ final class TheftProtectionService {
     guard settings.offlineSirenEnabled, settings.behaviorAlarm,
           !telegramSucceededInTheftMode else { return }
     guard offlineSirenTimer == nil else { return }
-    let timer = DispatchSource.makeTimerSource(queue: trackingQueue)
+    let timer = DispatchSource.makeTimerSource(queue: .main)
     timer.schedule(deadline: .now() + 10)
     timer.setEventHandler { [weak self] in
-      guard let self = self, self.state == .theftMode else { return }
-      DispatchQueue.main.async { AlarmAudioManager.shared.play() }
-      ActivityLog.logAsync(.theft, "Offline siren triggered (Telegram unreachable)")
+      MainActor.assumeIsolated {
+        guard let self, self.state == .theftMode else { return }
+        AlarmAudioManager.shared.play()
+        ActivityLog.logAsync(.theft, "Offline siren triggered (Telegram unreachable)")
+      }
     }
     offlineSirenTimer = timer
     timer.resume()
