@@ -38,11 +38,7 @@ final class UpdateService {
   private func schedulePeriodicTimer() {
     periodicTimer?.cancel()
 
-    #if APPSTORE
-    let interval = Config.AppStore.autoCheckInterval
-    #else
     let interval = Config.GitHub.autoCheckInterval
-    #endif
     let delay: TimeInterval
 
     if let last = settings.lastUpdateCheckDate {
@@ -69,109 +65,6 @@ final class UpdateService {
       DispatchQueue.main.async { self.showError(message) }
     }
   }
-
-  #if APPSTORE
-
-  func checkForUpdates(silent: Bool, completion: (() -> Void)? = nil) {
-    guard let url = URL(string: Config.AppStore.lookupURL) else {
-      completion?()
-      return
-    }
-
-    var request = URLRequest(url: url)
-    request.timeoutInterval = 15
-
-    URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
-      guard let self = self else { completion?(); return }
-
-      self.settings.lastUpdateCheckDate = Date()
-
-      if let error = error {
-        self.logAndShowError("Could not reach App Store: \(error.localizedDescription)", silent: silent)
-        completion?()
-        return
-      }
-
-      guard let httpResponse = response as? HTTPURLResponse,
-            (200...299).contains(httpResponse.statusCode),
-            let data = data else {
-        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
-        self.logAndShowError("Update check HTTP error: \(status)", silent: silent)
-        completion?()
-        return
-      }
-
-      let lookupResponse: ITunesLookupResponse
-      do {
-        lookupResponse = try JSONDecoder().decode(ITunesLookupResponse.self, from: data)
-      } catch {
-        self.logAndShowError("Could not parse App Store response: \(error)", silent: silent)
-        completion?()
-        return
-      }
-
-      guard let result = lookupResponse.results.first else {
-        self.logger.info("App not found on App Store")
-        completion?()
-        return
-      }
-
-      let localVersion = Config.App.version
-      guard self.isNewer(result.version, than: localVersion) else {
-        self.logger.info("App is up to date (\(localVersion))")
-        if !silent {
-          DispatchQueue.main.async { self.showUpToDate() }
-        }
-        completion?()
-        return
-      }
-
-      let storeURL = result.trackViewUrl
-      let releaseNotes = result.releaseNotes ?? "Bug fixes and improvements."
-
-      self.hasUpdateAvailable = true
-      DispatchQueue.main.async {
-        self.showUpdateWindow(version: result.version, releaseNotes: releaseNotes, storeURL: storeURL)
-      }
-      completion?()
-    }.resume()
-  }
-
-  private func showUpdateWindow(version: String, releaseNotes: String, storeURL: String) {
-    if let existing = updateWindow, existing.isVisible {
-      existing.makeKeyAndOrderFront(nil)
-      return
-    }
-
-    let view = UpdateView(
-      version: version,
-      changelog: releaseNotes,
-      storeURL: storeURL,
-      onDismiss: { [weak self] in
-        self?.hasUpdateAvailable = false
-        self?.updateWindow?.close()
-      }
-    )
-
-    let window = NSPanel(
-      contentRect: NSRect(x: 0, y: 0, width: 480, height: 360),
-      styleMask: [.titled, .closable, .nonactivatingPanel, .hudWindow],
-      backing: .buffered,
-      defer: false
-    )
-    window.title = "Software Update"
-    window.contentView = NSHostingView(rootView: view)
-    window.center()
-    window.isReleasedWhenClosed = false
-    window.level = .floating
-    window.hidesOnDeactivate = false
-    window.makeKeyAndOrderFront(nil)
-    NSApp.activate(ignoringOtherApps: true)
-
-    updateWindow = window
-  }
-
-  #else
 
   func checkForUpdates(silent: Bool, completion: (() -> Void)? = nil) {
     guard let url = URL(string: Config.GitHub.releasesURL) else {
@@ -445,8 +338,6 @@ final class UpdateService {
     NSApp.terminate(nil)
   }
 
-  #endif
-
   // MARK: - Version Comparison
 
   private func isNewer(_ remote: String, than local: String) -> Bool {
@@ -488,21 +379,6 @@ final class UpdateService {
 
 // MARK: - API Models
 
-#if APPSTORE
-
-private struct ITunesLookupResponse: Decodable {
-  let resultCount: Int
-  let results: [ITunesResult]
-}
-
-private struct ITunesResult: Decodable {
-  let version: String
-  let releaseNotes: String?
-  let trackViewUrl: String
-}
-
-#else
-
 private struct GitHubReleaseAsset: Decodable {
   let name: String
   let browserDownloadURL: String
@@ -528,5 +404,3 @@ private struct GitHubRelease: Decodable {
     case assets
   }
 }
-
-#endif

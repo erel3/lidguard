@@ -59,9 +59,6 @@ final class HelperInstallService {
   // MARK: - Periodic Helper Checks
 
   func startPeriodicHelperChecks() {
-    #if APPSTORE
-    return
-    #else
     guard settings.autoUpdateEnabled else { return }
 
     if !initialCheckDone {
@@ -72,7 +69,6 @@ final class HelperInstallService {
     }
 
     schedulePeriodicTimer()
-    #endif
   }
 
   func stopPeriodicHelperChecks() {
@@ -80,7 +76,6 @@ final class HelperInstallService {
     periodicTimer = nil
   }
 
-  #if !APPSTORE
   private func schedulePeriodicTimer() {
     periodicTimer?.cancel()
 
@@ -102,11 +97,8 @@ final class HelperInstallService {
     timer.resume()
     periodicTimer = timer
   }
-  #endif
 
   // MARK: - Check for Helper Updates
-
-  #if !APPSTORE
 
   func checkForHelperUpdates(silent: Bool, completion: (() -> Void)? = nil) {
     guard let url = URL(string: Config.Daemon.helperReleasesURL) else {
@@ -200,8 +192,6 @@ final class HelperInstallService {
     alert.runModal()
   }
 
-  #endif
-
   // MARK: - Update Window
 
   func showUpdateWindow(currentVersion: String?, latestVersion: String? = nil, mode: HelperUpdateMode = .required) {
@@ -258,12 +248,6 @@ final class HelperInstallService {
   }
 
   private func handleInstall() {
-    #if APPSTORE
-    if let url = URL(string: Config.Daemon.helperBrowserURL) {
-      NSWorkspace.shared.open(url)
-    }
-    updateWindow?.close()
-    #else
     // Show progress state
     let progressView = HelperUpdateView(
       currentVersion: TheftProtectionService.daemonVersion ?? "unknown",
@@ -290,12 +274,9 @@ final class HelperInstallService {
         }
       }
     }
-    #endif
   }
 
-  // MARK: - Direct Edition (Auto-Install)
-
-  #if !APPSTORE
+  // MARK: - Auto-Install
 
   func autoInstall(completion: ((Bool) -> Void)? = nil) {
     installQueue.async { [self] in
@@ -453,57 +434,10 @@ final class HelperInstallService {
     try? process.run()
     process.waitUntilExit()
   }
-
-  #endif
-
-  // MARK: - App Store Edition (Manual Install)
-
-  #if APPSTORE
-
-  private var instructionsWindow: NSWindow?
-
-  func showInstallInstructions() {
-    if let existing = instructionsWindow, existing.isVisible {
-      existing.makeKeyAndOrderFront(nil)
-      return
-    }
-
-    let view = HelperInstallView(
-      onDownload: {
-        if let url = URL(string: Config.Daemon.helperBrowserURL) {
-          NSWorkspace.shared.open(url)
-        }
-      },
-      onDismiss: { [weak self] in
-        self?.instructionsWindow?.close()
-        NotificationCenter.default.post(name: .helperInstallCompleted, object: nil)
-      }
-    )
-
-    let window = NSPanel(
-      contentRect: NSRect(x: 0, y: 0, width: 420, height: 300),
-      styleMask: [.titled, .closable, .nonactivatingPanel, .hudWindow],
-      backing: .buffered,
-      defer: false
-    )
-    window.title = "Install LidGuard Helper"
-    window.contentView = NSHostingView(rootView: view)
-    window.center()
-    window.isReleasedWhenClosed = false
-    window.level = .normal
-    window.hidesOnDeactivate = false
-    window.makeKeyAndOrderFront(nil)
-    NSApp.activate(ignoringOtherApps: true)
-
-    instructionsWindow = window
-  }
-
-  #endif
 }
 
 // MARK: - GitHub Release Model
 
-#if !APPSTORE
 private struct GitHubReleaseInfo: Decodable {
   let tagName: String
   let assets: [GitHubAsset]
@@ -523,7 +457,6 @@ private struct GitHubAsset: Decodable {
     case browserDownloadURL = "browser_download_url"
   }
 }
-#endif
 
 // MARK: - Helper Update View
 
@@ -584,16 +517,6 @@ private struct HelperUpdateView: View {
             Button("Skip This Version") { onSkip() }
           }
 
-          #if APPSTORE
-          if #available(macOS 26.0, *) {
-            Button("Download Helper") { onInstall() }
-              .keyboardShortcut(.defaultAction)
-              .buttonStyle(.glassProminent)
-          } else {
-            Button("Download Helper") { onInstall() }
-              .keyboardShortcut(.defaultAction)
-          }
-          #else
           if #available(macOS 26.0, *) {
             Button("Update Helper") { onInstall() }
               .keyboardShortcut(.defaultAction)
@@ -602,7 +525,6 @@ private struct HelperUpdateView: View {
             Button("Update Helper") { onInstall() }
               .keyboardShortcut(.defaultAction)
           }
-          #endif
         }
         .padding(.bottom, 4)
       }
@@ -611,58 +533,3 @@ private struct HelperUpdateView: View {
     .frame(width: 400, height: mode == .optional ? 260 : 240)
   }
 }
-
-// MARK: - App Store Install Instructions View
-
-#if APPSTORE
-private struct HelperInstallView: View {
-  let onDownload: () -> Void
-  let onDismiss: () -> Void
-
-  var body: some View {
-    VStack(spacing: 16) {
-      Image(systemName: "arrow.down.circle")
-        .font(.system(size: 40))
-        .foregroundStyle(.secondary)
-
-      Text("Install LidGuard Helper")
-        .font(.headline)
-
-      VStack(alignment: .leading, spacing: 12) {
-        instructionRow(number: 1, text: "Download the helper installer from GitHub")
-        instructionRow(number: 2, text: "Open the downloaded installer and follow the steps")
-        instructionRow(number: 3, text: "If prompted, allow LidGuard Helper in System Settings → Privacy & Security")
-      }
-      .padding(.horizontal)
-
-      Spacer()
-
-      HStack(spacing: 12) {
-        Button("Done") { onDismiss() }
-          .keyboardShortcut(.cancelAction)
-
-        if #available(macOS 26.0, *) {
-          Button("Download Helper") { onDownload() }
-            .keyboardShortcut(.defaultAction)
-            .buttonStyle(.glassProminent)
-        } else {
-          Button("Download Helper") { onDownload() }
-            .keyboardShortcut(.defaultAction)
-        }
-      }
-      .padding(.bottom, 4)
-    }
-    .padding(20)
-    .frame(width: 420, height: 300)
-  }
-
-  private func instructionRow(number: Int, text: String) -> some View {
-    HStack(alignment: .top, spacing: 10) {
-      Text("\(number).")
-        .fontWeight(.bold)
-        .frame(width: 20, alignment: .trailing)
-      Text(text)
-    }
-  }
-}
-#endif

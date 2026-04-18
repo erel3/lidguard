@@ -1,6 +1,4 @@
-#if !APPSTORE
 import Contacts
-#endif
 import KeyboardShortcuts
 import SwiftUI
 
@@ -35,10 +33,8 @@ struct SettingsView: View {
   @State private var contactName: String = ""
   @State private var contactPhone: String = ""
   @State private var startAtLogin: Bool = false
-  #if !APPSTORE
   @State private var autoUpdateEnabled: Bool = true
   @State private var isCheckingForUpdates: Bool = false
-  #endif
 
   // Triggers
   @State private var triggerLidClose: Bool = true
@@ -218,7 +214,6 @@ struct SettingsView: View {
           .foregroundStyle(.secondary)
       }
 
-      #if !APPSTORE
       Section {
         Toggle("Automatically check for updates", isOn: $autoUpdateEnabled)
         HStack {
@@ -241,7 +236,6 @@ struct SettingsView: View {
       } header: {
         Text("Updates")
       }
-      #endif
 
       Section {
         HStack {
@@ -280,13 +274,6 @@ struct SettingsView: View {
         if !isDaemonConnected || helperNeedsUpdate {
           HStack {
             Spacer()
-            #if APPSTORE
-            Button(helperNeedsUpdate ? "Update Helper..." : "Install Helper...") {
-              HelperInstallService.shared.showInstallInstructions()
-            }
-            .font(.callout)
-            .disabled(isInstallingHelper)
-            #else
             Button(helperNeedsUpdate || helperDisconnectedForUpdate ? "Update Helper" : "Install Helper") {
               isInstallingHelper = true
               helperInstallResult = nil
@@ -299,11 +286,9 @@ struct SettingsView: View {
             }
             .font(.callout)
             .disabled(isInstallingHelper)
-            #endif
             Spacer()
           }
         }
-        #if !APPSTORE
         if isDaemonConnected && !helperNeedsUpdate && !isInstallingHelper {
           HStack {
             Spacer()
@@ -311,7 +296,6 @@ struct SettingsView: View {
             Spacer()
           }
         }
-        #endif
       } header: {
         Text("Helper Daemon")
       } footer: {
@@ -469,9 +453,7 @@ struct SettingsView: View {
     telegramChatId = settings.telegramChatId ?? ""
     telegramEnabled = settings.telegramEnabled
     startAtLogin = loginItem.isEnabled
-    #if !APPSTORE
     autoUpdateEnabled = settings.autoUpdateEnabled
-    #endif
     selectedAlarmSound = settings.alarmSound
     behaviorAutoAlarm = settings.behaviorAutoAlarm
     alarmVolume = Double(settings.alarmVolume)
@@ -547,7 +529,6 @@ struct SettingsView: View {
     settings.trackBattery = trackBattery
     settings.trackDeviceName = trackDeviceName
 
-    #if !APPSTORE
     settings.autoUpdateEnabled = autoUpdateEnabled
     if autoUpdateEnabled {
       UpdateService.shared.startPeriodicChecks()
@@ -556,7 +537,6 @@ struct SettingsView: View {
       UpdateService.shared.stopPeriodicChecks()
       HelperInstallService.shared.stopPeriodicHelperChecks()
     }
-    #endif
 
     if !settings.setupComplete {
       settings.setupComplete = true
@@ -593,15 +573,9 @@ struct SettingsView: View {
     }
   }
 
-  #if !APPSTORE
   private var onLockScreenEnabled: (() -> Void)? { { requestContactsAndPopulate() } }
   private var onRetrieveContacts: (() -> Void)? { { retrieveFromContacts() } }
-  #else
-  private var onLockScreenEnabled: (() -> Void)? { nil }
-  private var onRetrieveContacts: (() -> Void)? { nil }
-  #endif
 
-  #if !APPSTORE
   private func checkForUpdates() {
     isCheckingForUpdates = true
     UpdateService.shared.checkForUpdates(silent: false) {
@@ -648,7 +622,6 @@ struct SettingsView: View {
       if granted { DispatchQueue.main.async { if let p = contactsPhoneNumber() { self.contactPhone = p } } }
     }
   }
-  #endif
 
   private func helperToggle(_ title: String, isOn: Binding<Bool>) -> some View {
     Toggle(isOn: isOn) {
@@ -665,7 +638,6 @@ struct SettingsView: View {
   }
 }
 
-#if !APPSTORE
 private func contactsPhoneNumber() -> String? {
   let store = CNContactStore()
   guard CNContactStore.authorizationStatus(for: .contacts) == .authorized else { return nil }
@@ -674,4 +646,3 @@ private func contactsPhoneNumber() -> String? {
   let mobile = me.phoneNumbers.first { $0.label == CNLabelPhoneNumberMobile }
   return mobile?.value.stringValue ?? me.phoneNumbers.first?.value.stringValue
 }
-#endif

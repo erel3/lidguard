@@ -21,27 +21,6 @@ final class DeviceInfoCollector: DeviceInfoCollecting {
   }
 
   func collect(completion: @escaping (DeviceInfo) -> Void) {
-    #if SCREENSHOT
-    let fakeLocation = CLLocation(
-      coordinate: CLLocationCoordinate2D(latitude: 40.689247, longitude: -74.044502),
-      altitude: 10,
-      horizontalAccuracy: 12,
-      verticalAccuracy: 5,
-      timestamp: Date()
-    )
-    let info = DeviceInfo(
-      timestamp: Date(),
-      location: fakeLocation,
-      publicIP: "203.0.113.42",
-      wifiName: "Liberty-WiFi",
-      batteryLevel: 87,
-      isCharging: false,
-      deviceName: "John's MacBook Pro"
-    )
-    completion(info)
-    return
-    #endif
-
     let settings = SettingsService.shared
 
     let locationBlock: (@escaping (CLLocation?) -> Void) -> Void = { callback in

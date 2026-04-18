@@ -5,11 +5,8 @@ build_dir := xcodebuild_dir + "/Build/Products/Release"
 version_file := "VERSION"
 bump := env("BUMP", "patch")
 codesign_id := env("CODESIGN_ID", "Developer ID Application: Andrey Kim (73R36N2A46)")
-codesign_id_appstore := env("CODESIGN_ID_APPSTORE", "Apple Distribution: Andrey Kim (73R36N2A46)")
-installer_id_appstore := env("INSTALLER_ID_APPSTORE", "3rd Party Mac Developer Installer: Andrey Kim (73R36N2A46)")
 codesign_req := env("CODESIGN_REQ", 'designated => anchor apple generic and certificate leaf[subject.OU] = "73R36N2A46"')
 notarize_profile := env("NOTARIZE_PROFILE", "Notarize")
-appstore_profile := env("APPSTORE_PROFILE", home_directory() + "/Library/Developer/Xcode/UserData/Provisioning Profiles/c2011cfe-9048-4a72-90ce-bece0703bc92.provisionprofile")
 
 export CODESIGN_REQ := codesign_req
 
@@ -20,34 +17,12 @@ compile:
     xcodebuild -scheme {{app_name}} -configuration Release -destination 'platform=macOS' \
         -derivedDataPath {{xcodebuild_dir}} build 2>&1 | tail -1
 
-# Compile App Store edition
-compile-appstore:
-    xcodebuild -scheme {{app_name}} -configuration Release -destination 'platform=macOS' \
-        -derivedDataPath {{xcodebuild_dir}} build \
-        SWIFT_ACTIVE_COMPILATION_CONDITIONS='APPSTORE' 2>&1 | tail -1
-
 # Compile + bundle with -dev suffix (codesigned .app)
 build: compile
     just _bundle "-dev"
 
-# Build App Store edition with -dev suffix
-build-appstore: compile-appstore
-    just _bundle "-dev" "LidGuard-AppStore.entitlements" "{{codesign_id}}" "{{appstore_profile}}"
-
 # Build + open (main dev workflow)
 run: build
-    open {{bundle}}
-
-# Build App Store edition + open
-run-appstore: build-appstore
-    open {{bundle}}
-
-# Build screenshot edition + open
-run-screenshot:
-    xcodebuild -scheme {{app_name}} -configuration Release -destination 'platform=macOS' \
-        -derivedDataPath {{xcodebuild_dir}} build \
-        SWIFT_ACTIVE_COMPILATION_CONDITIONS='SCREENSHOT' 2>&1 | tail -1
-    just _bundle "-dev"
     open {{bundle}}
 
 # Build debug binary and run directly (fast, no bundle)
@@ -84,26 +59,6 @@ release:
         --title "$TITLE" --notes-file RELEASE_NOTES.md
     rm -f RELEASE_NOTES.md
     echo "Released v$VERSION"
-
-# Build App Store edition for Transporter upload
-release-appstore: compile-appstore
-    #!/usr/bin/env bash
-    set -euo pipefail
-    CODESIGN_REQ="" just _bundle "" "LidGuard-AppStore-Release.entitlements" "{{codesign_id_appstore}}" "{{appstore_profile}}"
-    VERSION=$(cat {{version_file}})
-    productbuild --component {{bundle}} /Applications \
-        --sign "{{installer_id_appstore}}" \
-        dist/{{app_name}}-$VERSION-AppStore.pkg
-    echo "App Store pkg ready: dist/{{app_name}}-$VERSION-AppStore.pkg"
-    xcrun altool --upload-package dist/{{app_name}}-$VERSION-AppStore.pkg \
-        --type osx \
-        --apple-id "6760257102" \
-        --bundle-id "com.akim.lidguard" \
-        --bundle-short-version-string "$VERSION" \
-        --bundle-version "$(date +%y%m%d%H%M)" \
-        --apiKey 37ZNB2LF54 \
-        --apiIssuer 6492048a-9214-4cfd-9d50-2b1469375376
-    echo "Uploaded to App Store Connect"
 
 # Run swiftlint --strict on Sources/
 lint:

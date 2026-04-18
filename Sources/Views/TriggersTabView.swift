@@ -24,11 +24,9 @@ struct TriggersTabView: View {
               onOpenAccessibility()
             }
           }
-        #if !APPSTORE
         if motionSupported {
           helperToggle("Motion detection", isOn: $triggerMotionDetect)
         }
-        #endif
       } header: {
         Text("Theft Mode Triggers")
       } footer: {
@@ -64,15 +62,13 @@ struct TriggersTabView: View {
             .buttonStyle(.link)
         }
       }
-      #if !APPSTORE
       if motionSupported && triggerMotionDetect {
         Text(
           "Motion detection triggers theft mode when the Mac is picked up, "
-          + "tilted, or carried. Apple Silicon only. Brief grace period "
-          + "after arming while the baseline calibrates."
+          + "tilted, or carried. Brief grace period after arming while the "
+          + "baseline calibrates."
         )
       }
-      #endif
     }
     .font(.footnote)
     .foregroundStyle(.secondary)

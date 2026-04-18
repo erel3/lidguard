@@ -1,6 +1,4 @@
-#if !APPSTORE
 import Contacts
-#endif
 import Foundation
 
 extension Notification.Name {
@@ -18,9 +16,7 @@ extension Notification.Name {
 final class SettingsService {
   static let shared = SettingsService()
   private let defaults = UserDefaults.standard
-  #if !APPSTORE
   private let contactStore = CNContactStore()
-  #endif
 
   private enum Keys {
     static let contactName = "lidguard.contactName"
@@ -55,10 +51,8 @@ final class SettingsService {
     // Updates
     static let autoUpdateEnabled = "lidguard.autoUpdateEnabled"
     static let lastUpdateCheckDate = "lidguard.lastUpdateCheckDate"
-    #if !APPSTORE
     static let skippedVersion = "lidguard.skippedVersion"
     static let skippedHelperVersion = "lidguard.skippedHelperVersion"
-    #endif
     static let lastHelperUpdateCheckDate = "lidguard.lastHelperUpdateCheckDate"
 
     // Setup
@@ -168,18 +162,10 @@ final class SettingsService {
   }
 
   var triggerMotionDetect: Bool {
-    get {
-      #if APPSTORE
-      return false
-      #else
-      return defaults.object(forKey: Keys.triggerMotionDetect) as? Bool ?? false
-      #endif
-    }
+    get { defaults.object(forKey: Keys.triggerMotionDetect) as? Bool ?? false }
     set {
-      #if !APPSTORE
       defaults.set(newValue, forKey: Keys.triggerMotionDetect)
       NotificationCenter.default.post(name: .motionSettingsChanged, object: nil)
-      #endif
     }
   }
 
@@ -269,7 +255,6 @@ final class SettingsService {
     set { defaults.set(newValue, forKey: Keys.lastUpdateCheckDate) }
   }
 
-  #if !APPSTORE
   var skippedVersion: String? {
     get { defaults.string(forKey: Keys.skippedVersion) }
     set { defaults.set(newValue, forKey: Keys.skippedVersion) }
@@ -279,7 +264,6 @@ final class SettingsService {
     get { defaults.string(forKey: Keys.skippedHelperVersion) }
     set { defaults.set(newValue, forKey: Keys.skippedHelperVersion) }
   }
-  #endif
 
   var lastHelperUpdateCheckDate: Date? {
     get { defaults.object(forKey: Keys.lastHelperUpdateCheckDate) as? Date }
@@ -410,10 +394,8 @@ final class SettingsService {
     defaults.removeObject(forKey: Keys.setupComplete)
     defaults.removeObject(forKey: Keys.autoUpdateEnabled)
     defaults.removeObject(forKey: Keys.lastUpdateCheckDate)
-    #if !APPSTORE
     defaults.removeObject(forKey: Keys.skippedVersion)
     defaults.removeObject(forKey: Keys.skippedHelperVersion)
-    #endif
     defaults.removeObject(forKey: Keys.lastHelperUpdateCheckDate)
     defaults.removeObject(forKey: Keys.btShortcutEnabled)
     defaults.removeObject(forKey: Keys.bluetoothAutoArmEnabled)
@@ -433,7 +415,6 @@ final class SettingsService {
 
   // MARK: - My Card Phone
 
-  #if !APPSTORE
   private var myCardPhone: String? {
     guard CNContactStore.authorizationStatus(for: .contacts) == .authorized else {
       return nil
@@ -466,5 +447,4 @@ final class SettingsService {
       completion()
     }
   }
-  #endif
 }

@@ -105,13 +105,11 @@ final class TheftProtectionService {
       self?.globalShortcutService.restart()
     }
 
-    #if !APPSTORE
     NotificationCenter.default.addObserver(
       forName: .motionSettingsChanged, object: nil, queue: .main
     ) { [weak self] _ in
       self?.handleMotionSettingsChange()
     }
-    #endif
 
     NotificationCenter.default.addObserver(
       forName: .bluetoothSettingsChanged, object: nil, queue: .main
@@ -201,9 +199,7 @@ final class TheftProtectionService {
     bluetoothProximityService.stop()
     daemonClient.disablePmset()
     daemonClient.disablePowerButton()
-    #if !APPSTORE
     daemonClient.disableMotionMonitoring()
-    #endif
     daemonClient.hideLockScreen()
     daemonClient.disconnect()
   }
@@ -214,9 +210,7 @@ final class TheftProtectionService {
     if settings.triggerLidClose { result.append("lid close") }
     if settings.triggerPowerDisconnect { result.append("power disconnect") }
     if settings.triggerPowerButton { result.append("power button") }
-    #if !APPSTORE
     if settings.triggerMotionDetect { result.append("motion") }
-    #endif
     return result
   }
 
@@ -244,11 +238,9 @@ final class TheftProtectionService {
     // Daemon features
     if settings.behaviorLidCloseSleep { daemonClient.enablePmset() }
     if settings.triggerPowerButton { daemonClient.enablePowerButton() }
-    #if !APPSTORE
     if settings.triggerMotionDetect && daemonClient.motionSupported {
       daemonClient.enableMotionMonitoring()
     }
-    #endif
     lastArmTime = Date()
   }
 
@@ -256,15 +248,12 @@ final class TheftProtectionService {
   /// from theft mode — the laptop may have been repositioned while in theft
   /// mode, so the old baseline would cause an immediate re-trigger.
   private func recalibrateMotion() {
-    #if !APPSTORE
     guard SettingsService.shared.triggerMotionDetect && daemonClient.motionSupported else { return }
     daemonClient.disableMotionMonitoring()
     daemonClient.enableMotionMonitoring()
     lastArmTime = Date()
-    #endif
   }
 
-  #if !APPSTORE
   /// Apply a mid-arm toggle of the motion setting. Only meaningful when
   /// protection is actively armed — otherwise startMonitors/disableProtection
   /// handle lifecycle on their own.
@@ -277,7 +266,6 @@ final class TheftProtectionService {
       daemonClient.disableMotionMonitoring()
     }
   }
-  #endif
 
   func enableProtection(notify: Bool = true, lockScreen: Bool = false) {
     guard state == .disabled else { return }
@@ -345,9 +333,7 @@ final class TheftProtectionService {
     sleepPrevention.disable()
     daemonClient.disablePmset()
     daemonClient.disablePowerButton()
-    #if !APPSTORE
     daemonClient.disableMotionMonitoring()
-    #endif
     daemonClient.hideLockScreen()
     lastArmTime = nil
     Logger.theft.info("Protection disabled")
@@ -388,9 +374,7 @@ final class TheftProtectionService {
     // Stop motion monitoring while in theft mode (the main-app gate would
     // drop events anyway, but this saves helper CPU and log spam).
     // On deactivate, recalibrateMotion() restarts it with a fresh baseline.
-    #if !APPSTORE
     daemonClient.disableMotionMonitoring()
-    #endif
 
     // System lock screen + overlay message
     let settings = SettingsService.shared

@@ -30,15 +30,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
       self?.updateStatus()
     }
 
-    #if APPSTORE
-    ReceiptValidation.validateOrExit()
-    #endif
-
     ActivityLog.logAsync(.system, "LidGuard v\(Config.App.version) started")
-    #if !APPSTORE
     UpdateService.shared.startPeriodicChecks()
     HelperInstallService.shared.startPeriodicHelperChecks()
-    #endif
 
     // Start with no Dock icon (protection disabled)
     NSApp.setActivationPolicy(.accessory)

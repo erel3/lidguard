@@ -46,16 +46,12 @@ extension TheftProtectionService: DaemonIPCDelegate {
   }
 
   func daemonDidDetectMotion(_ client: DaemonIPCClient, detail: String, session: UInt64) {
-    #if APPSTORE
-    return
-    #else
     guard state == .enabled || state == .enabledBluetooth else { return }
     guard SettingsService.shared.triggerMotionDetect else { return }
     if let armed = lastArmTime,
        Date().timeIntervalSince(armed) < TheftProtectionService.motionArmGrace { return }
     ActivityLog.logAsync(.trigger, "Motion detected (\(detail))")
     activateTheftMode(trigger: .motionDetected(detail))
-    #endif
   }
 
   func daemonDidUpdateMotionSupport(_ client: DaemonIPCClient, supported: Bool) {
@@ -67,12 +63,10 @@ extension TheftProtectionService: DaemonIPCDelegate {
     let settings = SettingsService.shared
     if settings.behaviorLidCloseSleep { client.enablePmset() }
     if settings.triggerPowerButton { client.enablePowerButton() }
-    #if !APPSTORE
     if settings.triggerMotionDetect && client.motionSupported
       && (state == .enabled || state == .enabledBluetooth) {
       client.enableMotionMonitoring()
     }
-    #endif
     if state == .theftMode && settings.lockScreenOnTheftMode && settings.behaviorLockScreen {
       let name = settings.contactName ?? ""
       let phone = settings.contactPhone ?? ""
