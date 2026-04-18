@@ -1,6 +1,7 @@
 import Foundation
 import os.log
 
+@MainActor
 protocol TelegramCommandDelegate: AnyObject {
   func telegramCommandReceived(_ command: TelegramCommand)
 }
@@ -15,11 +16,11 @@ enum TelegramCommand: String {
   case stopalarm = "/stopalarm"
 }
 
+@MainActor
 final class TelegramCommandService {
   weak var delegate: TelegramCommandDelegate?
 
   private let session: URLSession
-  private let queue = DispatchQueue(label: "com.lidguard.telegram.commands", qos: .utility)
 
   private var timer: DispatchSourceTimer?
   private var lastUpdateId: Int?
@@ -38,44 +39,40 @@ final class TelegramCommandService {
       return
     }
 
-    timer = DispatchSource.makeTimerSource(queue: queue)
-    timer?.schedule(deadline: .now(), repeating: pollInterval)
-    timer?.setEventHandler { [weak self] in
-      self?.pollUpdates()
-    }
-    timer?.resume()
+    schedulePolling(initialDeadline: .now())
     Logger.telegram.info("Command polling started")
     ActivityLog.logAsync(.telegram, "Command polling started")
   }
 
   func stop() {
-    queue.async { [self] in
-      timer?.cancel()
-      timer = nil
-      Logger.telegram.info("Command polling stopped")
-    }
+    timer?.cancel()
+    timer = nil
+    Logger.telegram.info("Command polling stopped")
   }
 
   func pause() {
-    queue.sync { [self] in
-      timer?.cancel()
-      timer = nil
-      Logger.telegram.info("Command polling paused for sleep")
-    }
+    timer?.cancel()
+    timer = nil
+    Logger.telegram.info("Command polling paused for sleep")
   }
 
   func resume() {
-    queue.async { [self] in
-      guard Config.Telegram.isConfigured && Config.Telegram.isEnabled else { return }
-      guard timer == nil else { return }
-      timer = DispatchSource.makeTimerSource(queue: queue)
-      timer?.schedule(deadline: .now() + pollInterval, repeating: pollInterval)
-      timer?.setEventHandler { [weak self] in
+    guard Config.Telegram.isConfigured && Config.Telegram.isEnabled else { return }
+    guard timer == nil else { return }
+    schedulePolling(initialDeadline: .now() + pollInterval)
+    Logger.telegram.info("Command polling resumed after wake")
+  }
+
+  private func schedulePolling(initialDeadline: DispatchTime) {
+    let newTimer = DispatchSource.makeTimerSource(queue: .main)
+    newTimer.schedule(deadline: initialDeadline, repeating: pollInterval)
+    newTimer.setEventHandler { [weak self] in
+      MainActor.assumeIsolated {
         self?.pollUpdates()
       }
-      timer?.resume()
-      Logger.telegram.info("Command polling resumed after wake")
     }
+    newTimer.resume()
+    timer = newTimer
   }
 
   private func pollUpdates() {
@@ -96,11 +93,13 @@ final class TelegramCommandService {
     }
 
     let task = session.dataTask(with: url) { [weak self] data, _, error in
-      guard let self else { return }
-      self.queue.async {
-        defer { self.isPolling = false }
-        guard let data, error == nil else { return }
-        self.parseUpdates(data, chatId: chatId)
+      DispatchQueue.main.async {
+        MainActor.assumeIsolated {
+          guard let self else { return }
+          defer { self.isPolling = false }
+          guard let data, error == nil else { return }
+          self.parseUpdates(data, chatId: chatId)
+        }
       }
     }
     task.resume()
@@ -126,10 +125,7 @@ final class TelegramCommandService {
       if let command = parseCommand(text) {
         Logger.telegram.info("Received command: \(text)")
         ActivityLog.logAsync(.telegram, "Received command: \(text)")
-        CFRunLoopPerformBlock(CFRunLoopGetMain(), CFRunLoopMode.commonModes.rawValue) { [weak self] in
-          self?.delegate?.telegramCommandReceived(command)
-        }
-        CFRunLoopWakeUp(CFRunLoopGetMain())
+        delegate?.telegramCommandReceived(command)
       }
     }
   }

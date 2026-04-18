@@ -1,6 +1,7 @@
 import Cocoa
 import SwiftUI
 
+@MainActor
 final class SettingsWindowController {
   static let shared = SettingsWindowController()
 
@@ -50,6 +51,7 @@ final class SettingsWindowController {
   }
 }
 
+@MainActor
 private class WindowDelegate: NSObject, NSWindowDelegate {
   static let shared = WindowDelegate()
 

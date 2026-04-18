@@ -2,10 +2,12 @@ import Foundation
 import IOKit.ps
 import os.log
 
+@MainActor
 protocol PowerMonitorDelegate: AnyObject {
   func powerMonitorDidDetectDisconnect(_ monitor: PowerMonitorService)
 }
 
+@MainActor
 final class PowerMonitorService {
   weak var delegate: PowerMonitorDelegate?
 

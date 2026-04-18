@@ -7,12 +7,14 @@ private let kIOMessageCanSystemSleep: UInt32 = 0xe0000270
 private let kIOMessageSystemWillSleep: UInt32 = 0xe0000280
 private let kIOMessageSystemHasPoweredOn: UInt32 = 0xe0000300
 
+@MainActor
 protocol SleepWakeDelegate: AnyObject {
   func systemWillSleep()
   func systemDidWake()
   func shouldDenySleep() -> Bool
 }
 
+@MainActor
 final class SleepWakeService {
   weak var delegate: SleepWakeDelegate?
 
@@ -21,7 +23,7 @@ final class SleepWakeService {
   private var notifierObject: io_object_t = 0
   private var rootPort: io_connect_t = 0
 
-  deinit {
+  isolated deinit {
     stop()
   }
 
@@ -63,12 +65,12 @@ final class SleepWakeService {
     rootPort = 0
   }
 
-  fileprivate func handlePower(_ type: UInt32, _ arg: UnsafeMutableRawPointer?) {
+  fileprivate func handlePower(_ type: UInt32, _ argBits: Int) {
     switch type {
     case kIOMessageSystemWillSleep:
       Logger.power.info("System will sleep")
       delegate?.systemWillSleep()
-      IOAllowPowerChange(rootPort, Int(bitPattern: arg))
+      IOAllowPowerChange(rootPort, argBits)
 
     case kIOMessageSystemHasPoweredOn:
       Logger.power.info("System did wake")
@@ -76,9 +78,9 @@ final class SleepWakeService {
 
     case kIOMessageCanSystemSleep:
       if delegate?.shouldDenySleep() == true {
-        IOCancelPowerChange(rootPort, Int(bitPattern: arg))
+        IOCancelPowerChange(rootPort, argBits)
       } else {
-        IOAllowPowerChange(rootPort, Int(bitPattern: arg))
+        IOAllowPowerChange(rootPort, argBits)
       }
 
     default:
@@ -94,7 +96,9 @@ private func powerCallback(
   messageArgument: UnsafeMutableRawPointer?
 ) {
   guard let refCon = refCon else { return }
-  Unmanaged<SleepWakeService>.fromOpaque(refCon)
-    .takeUnretainedValue()
-    .handlePower(messageType, messageArgument)
+  let svc = Unmanaged<SleepWakeService>.fromOpaque(refCon).takeUnretainedValue()
+  let argBits: Int = messageArgument.map { Int(bitPattern: $0) } ?? 0
+  MainActor.assumeIsolated {
+    svc.handlePower(messageType, argBits)
+  }
 }

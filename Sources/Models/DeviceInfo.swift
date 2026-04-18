@@ -1,7 +1,7 @@
 import Foundation
 import CoreLocation
 
-struct DeviceInfo {
+struct DeviceInfo: Sendable {
   let timestamp: Date
   let location: CLLocation?
   let publicIP: String?

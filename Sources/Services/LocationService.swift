@@ -2,14 +2,16 @@ import Foundation
 import CoreLocation
 import os.log
 
+@MainActor
 protocol LocationProvider {
   func requestAuthorization()
-  func requestLocation(completion: @escaping (CLLocation?) -> Void)
+  func requestLocation(completion: @escaping @Sendable (CLLocation?) -> Void)
 }
 
+@MainActor
 final class LocationService: NSObject, LocationProvider {
   private let locationManager = CLLocationManager()
-  private var completion: ((CLLocation?) -> Void)?
+  private var completion: (@Sendable (CLLocation?) -> Void)?
   private let timeout: TimeInterval
   private var cachedLocation: CLLocation?
 
@@ -31,7 +33,7 @@ final class LocationService: NSObject, LocationProvider {
     }
   }
 
-  func requestLocation(completion: @escaping (CLLocation?) -> Void) {
+  func requestLocation(completion: @escaping @Sendable (CLLocation?) -> Void) {
     // If already have pending request, complete it first
     if self.completion != nil {
       complete(with: nil)
@@ -56,12 +58,13 @@ final class LocationService: NSObject, LocationProvider {
   private func startTimeout() {
     // Use background queue for timeout - main run loop may be blocked by menu
     DispatchQueue.global().asyncAfter(deadline: .now() + timeout) { [weak self] in
-      guard let self = self else { return }
-      // Complete with cached location if still waiting
-      // Use cachedLocation (not locationManager.location) to avoid CLLocationManager
-      // internal @synchronized deadlock when accessed from background thread
-      if self.completion != nil {
-        self.complete(with: self.cachedLocation)
+      DispatchQueue.main.async {
+        MainActor.assumeIsolated {
+          guard let self else { return }
+          if self.completion != nil {
+            self.complete(with: self.cachedLocation)
+          }
+        }
       }
     }
   }
@@ -73,7 +76,7 @@ final class LocationService: NSObject, LocationProvider {
 }
 
 // MARK: - CLLocationManagerDelegate
-extension LocationService: CLLocationManagerDelegate {
+extension LocationService: @preconcurrency CLLocationManagerDelegate {
   func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
     if let location = locations.last {
       cachedLocation = location

@@ -1,12 +1,14 @@
 import Foundation
 import LocalAuthentication
 
+@MainActor
 protocol AuthenticationService {
-  func authenticate(reason: String, completion: @escaping (Bool) -> Void)
+  func authenticate(reason: String, completion: @escaping @Sendable (Bool) -> Void)
 }
 
+@MainActor
 final class BiometricAuthService: AuthenticationService {
-  func authenticate(reason: String, completion: @escaping (Bool) -> Void) {
+  func authenticate(reason: String, completion: @escaping @Sendable (Bool) -> Void) {
     guard SettingsService.shared.biometricAuthEnabled else {
       completion(true)
       return

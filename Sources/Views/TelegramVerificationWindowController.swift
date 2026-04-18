@@ -1,12 +1,13 @@
 import Cocoa
 import SwiftUI
 
+@MainActor
 final class TelegramVerificationWindowController: NSObject {
   private var window: NSWindow?
   private let verificationService = TelegramVerificationService()
   private var completion: ((String?) -> Void)?
 
-  deinit {
+  isolated deinit {
     verificationService.stop()
     window?.delegate = nil
     window?.close()
@@ -44,7 +45,9 @@ final class TelegramVerificationWindowController: NSObject {
     NSApp.activate(ignoringOtherApps: true)
 
     verificationService.start(botToken: botToken, code: code) { [weak self] chatId in
-      self?.dismiss(chatId: chatId)
+      MainActor.assumeIsolated {
+        self?.dismiss(chatId: chatId)
+      }
     }
   }
 

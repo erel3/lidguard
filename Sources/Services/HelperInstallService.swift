@@ -2,6 +2,7 @@ import Cocoa
 import os.log
 import SwiftUI
 
+@MainActor
 final class HelperInstallService {
   static let shared = HelperInstallService()
 
@@ -41,7 +42,7 @@ final class HelperInstallService {
 
   // MARK: - Version Comparison
 
-  private func isNewer(_ remote: String, than local: String) -> Bool {
+  nonisolated private func isNewer(_ remote: String, than local: String) -> Bool {
     func parts(_ v: String) -> [Int] {
       let clean = v.trimmingCharacters(in: CharacterSet(charactersIn: "v"))
       return clean.split(separator: ".").compactMap { Int($0) }
@@ -63,7 +64,7 @@ final class HelperInstallService {
 
     if !initialCheckDone {
       initialCheckDone = true
-      checkQueue.asyncAfter(deadline: .now() + 10) { [weak self] in
+      DispatchQueue.main.asyncAfter(deadline: .now() + 10) { [weak self] in
         self?.checkForHelperUpdates(silent: true)
       }
     }
@@ -88,11 +89,13 @@ final class HelperInstallService {
       delay = interval
     }
 
-    let timer = DispatchSource.makeTimerSource(queue: checkQueue)
+    let timer = DispatchSource.makeTimerSource(queue: .main)
     timer.schedule(deadline: .now() + delay, repeating: interval)
     timer.setEventHandler { [weak self] in
-      guard let self = self, self.settings.autoUpdateEnabled else { return }
-      self.checkForHelperUpdates(silent: true)
+      MainActor.assumeIsolated {
+        guard let self = self, self.settings.autoUpdateEnabled else { return }
+        self.checkForHelperUpdates(silent: true)
+      }
     }
     timer.resume()
     periodicTimer = timer
@@ -100,7 +103,7 @@ final class HelperInstallService {
 
   // MARK: - Check for Helper Updates
 
-  func checkForHelperUpdates(silent: Bool, completion: (() -> Void)? = nil) {
+  func checkForHelperUpdates(silent: Bool, completion: (@Sendable () -> Void)? = nil) {
     guard let url = URL(string: Config.Daemon.helperReleasesURL) else {
       completion?()
       return
@@ -112,66 +115,64 @@ final class HelperInstallService {
     request.timeoutInterval = 15
 
     URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
-      guard let self = self else { completion?(); return }
-
-      self.settings.lastHelperUpdateCheckDate = Date()
-
-      guard error == nil,
-            let httpResponse = response as? HTTPURLResponse,
-            (200...299).contains(httpResponse.statusCode),
-            let data = data,
-            let release = try? JSONDecoder().decode(GitHubReleaseInfo.self, from: data) else {
-        if !silent {
-          Logger.daemon.error("Failed to check for helper updates")
-          DispatchQueue.main.async { self.showHelperCheckError() }
-        }
-        completion?()
-        return
-      }
-
-      let latestVersion = release.tagName.trimmingCharacters(in: CharacterSet(charactersIn: "v"))
-
-      guard TheftProtectionService.daemonConnected,
-            let currentVersion = TheftProtectionService.daemonVersion else {
-        if !silent {
-          DispatchQueue.main.async { self.showHelperUpToDate() }
-        }
-        completion?()
-        return
-      }
-
-      let isRequired = TheftProtectionService.helperNeedsUpdate
-      let hasNewerRelease = self.isNewer(latestVersion, than: currentVersion)
-
-      guard isRequired || hasNewerRelease else {
-        if !silent {
-          DispatchQueue.main.async { self.showHelperUpToDate() }
-        }
-        completion?()
-        return
-      }
-
-      let mode: HelperUpdateMode = isRequired ? .required : .optional
-
-      // For optional updates in silent mode: respect skipped version
-      if mode == .optional && silent && self.settings.skippedHelperVersion == latestVersion {
-        Logger.daemon.info("Skipping helper update to \(latestVersion) (user skipped)")
-        completion?()
-        return
-      }
-
-      // Suppress helper update notification when app update is available (avoid double-nag)
-      if silent && UpdateService.shared.hasUpdateAvailable {
-        Logger.daemon.info("Suppressing helper update notification — app update available")
-        completion?()
-        return
-      }
-
+      let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
+      let hadError = error != nil
       DispatchQueue.main.async {
-        self.showUpdateWindow(currentVersion: currentVersion, latestVersion: latestVersion, mode: mode)
+        MainActor.assumeIsolated {
+          guard let self = self else { completion?(); return }
+          self.handleHelperCheckResponse(
+            data: data,
+            statusCode: statusCode,
+            hadError: hadError,
+            silent: silent
+          )
+          completion?()
+        }
       }
-      completion?()
     }.resume()
+  }
+
+  private func handleHelperCheckResponse(data: Data?, statusCode: Int, hadError: Bool, silent: Bool) {
+    settings.lastHelperUpdateCheckDate = Date()
+
+    guard !hadError, (200...299).contains(statusCode), let data = data,
+          let release = try? JSONDecoder().decode(GitHubReleaseInfo.self, from: data) else {
+      if !silent {
+        Logger.daemon.error("Failed to check for helper updates")
+        showHelperCheckError()
+      }
+      return
+    }
+
+    let latestVersion = release.tagName.trimmingCharacters(in: CharacterSet(charactersIn: "v"))
+
+    guard TheftProtectionService.daemonConnected,
+          let currentVersion = TheftProtectionService.daemonVersion else {
+      if !silent { showHelperUpToDate() }
+      return
+    }
+
+    let isRequired = TheftProtectionService.helperNeedsUpdate
+    let hasNewerRelease = isNewer(latestVersion, than: currentVersion)
+
+    guard isRequired || hasNewerRelease else {
+      if !silent { showHelperUpToDate() }
+      return
+    }
+
+    let mode: HelperUpdateMode = isRequired ? .required : .optional
+
+    if mode == .optional && silent && settings.skippedHelperVersion == latestVersion {
+      Logger.daemon.info("Skipping helper update to \(latestVersion) (user skipped)")
+      return
+    }
+
+    if silent && UpdateService.shared.hasUpdateAvailable {
+      Logger.daemon.info("Suppressing helper update notification — app update available")
+      return
+    }
+
+    showUpdateWindow(currentVersion: currentVersion, latestVersion: latestVersion, mode: mode)
   }
 
   private func showHelperUpToDate() {
@@ -278,98 +279,106 @@ final class HelperInstallService {
 
   // MARK: - Auto-Install
 
-  func autoInstall(completion: ((Bool) -> Void)? = nil) {
-    installQueue.async { [self] in
-      guard !isInstalling else { completion?(false); return }
-      isInstalling = true
-      defer { isInstalling = false }
-
-      Logger.daemon.info("Auto-installing helper daemon...")
-      ActivityLog.logAsync(.system, "Auto-installing helper daemon...")
-
-      guard let url = URL(string: Config.Daemon.helperReleasesURL) else { return }
-
-      var request = URLRequest(url: url)
-      request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
-      request.setValue("LidGuard/\(Config.App.version)", forHTTPHeaderField: "User-Agent")
-      request.timeoutInterval = 30
-
-      let semaphore = DispatchSemaphore(value: 0)
-      var fetchedData: Data?
-      var fetchError: Bool = false
-
-      URLSession.shared.dataTask(with: request) { data, response, error in
-        if error != nil {
-          fetchError = true
-        } else if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
-          fetchError = true
-        } else {
-          fetchedData = data
+  func autoInstall(completion: (@Sendable (Bool) -> Void)? = nil) {
+    guard !isInstalling else { completion?(false); return }
+    isInstalling = true
+    installQueue.async { [weak self] in
+      let success = Self.performAutoInstall()
+      DispatchQueue.main.async {
+        MainActor.assumeIsolated {
+          self?.isInstalling = false
+          if success {
+            self?.disconnectedForRequiredUpdate = false
+            self?.settings.skippedHelperVersion = nil
+            NotificationCenter.default.post(name: .helperInstallCompleted, object: nil)
+          }
+          completion?(success)
         }
-        semaphore.signal()
-      }.resume()
-      semaphore.wait()
-
-      guard let data = fetchedData, !fetchError else {
-        Logger.daemon.error("Failed to fetch helper release info")
-        ActivityLog.logAsync(.system, "Helper auto-install failed: could not fetch release info")
-        return
-      }
-
-      guard let release = try? JSONDecoder().decode(GitHubReleaseInfo.self, from: data),
-            let asset = release.assets.first(where: { $0.name.hasSuffix(".pkg") }),
-            let downloadURL = URL(string: asset.browserDownloadURL) else {
-        Logger.daemon.error("No suitable asset found in helper release")
-        ActivityLog.logAsync(.system, "Helper auto-install failed: no suitable asset")
-        return
-      }
-
-      do {
-        let tempDir = FileManager.default.temporaryDirectory
-          .appendingPathComponent("lidguard-helper-\(UUID().uuidString)")
-        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: tempDir) }
-
-        let pkgPath = tempDir.appendingPathComponent(asset.name)
-        try downloadFile(from: downloadURL, to: pkgPath)
-
-        // Unload existing daemon and wait for cleanup
-        unloadDaemon()
-        Thread.sleep(forTimeInterval: 1)
-
-        // Install PKG with admin privileges (postinstall needs root for sudoers + chown)
-        let escapedPath = pkgPath.path.replacingOccurrences(of: "\\", with: "\\\\")
-          .replacingOccurrences(of: "\"", with: "\\\"")
-        let script = "do shell script \"/usr/sbin/installer -pkg \\\"\(escapedPath)\\\" -target /\" with administrator privileges"
-        let installer = Process()
-        installer.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
-        installer.arguments = ["-e", script]
-        installer.standardOutput = FileHandle.nullDevice
-        installer.standardError = FileHandle.nullDevice
-        try installer.run()
-        installer.waitUntilExit()
-
-        guard installer.terminationStatus == 0 else {
-          throw NSError(domain: "HelperInstall", code: 1,
-                        userInfo: [NSLocalizedDescriptionKey: "PKG installer exited with status \(installer.terminationStatus)"])
-        }
-
-        // PKG post-install script handles: LaunchAgent plist, launchctl load, sudoers
-        Logger.daemon.info("Helper daemon installed successfully")
-        ActivityLog.logAsync(.system, "Helper daemon installed successfully")
-        disconnectedForRequiredUpdate = false
-        settings.skippedHelperVersion = nil
-        NotificationCenter.default.post(name: .helperInstallCompleted, object: nil)
-        completion?(true)
-      } catch {
-        Logger.daemon.error("Helper install failed: \(error.localizedDescription)")
-        ActivityLog.logAsync(.system, "Helper auto-install failed: \(error.localizedDescription)")
-        completion?(false)
       }
     }
   }
 
-  private func downloadFile(from url: URL, to destination: URL) throws {
+  nonisolated private static func performAutoInstall() -> Bool {
+    Logger.daemon.info("Auto-installing helper daemon...")
+    ActivityLog.logAsync(.system, "Auto-installing helper daemon...")
+
+    guard let url = URL(string: Config.Daemon.helperReleasesURL) else { return false }
+
+    var request = URLRequest(url: url)
+    request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
+    request.setValue("LidGuard/\(Config.App.version)", forHTTPHeaderField: "User-Agent")
+    request.timeoutInterval = 30
+
+    let semaphore = DispatchSemaphore(value: 0)
+    nonisolated(unsafe) var fetchedData: Data?
+    nonisolated(unsafe) var fetchError: Bool = false
+
+    URLSession.shared.dataTask(with: request) { data, response, error in
+      if error != nil {
+        fetchError = true
+      } else if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
+        fetchError = true
+      } else {
+        fetchedData = data
+      }
+      semaphore.signal()
+    }.resume()
+    semaphore.wait()
+
+    guard let data = fetchedData, !fetchError else {
+      Logger.daemon.error("Failed to fetch helper release info")
+      ActivityLog.logAsync(.system, "Helper auto-install failed: could not fetch release info")
+      return false
+    }
+
+    guard let release = try? JSONDecoder().decode(GitHubReleaseInfo.self, from: data),
+          let asset = release.assets.first(where: { $0.name.hasSuffix(".pkg") }),
+          let downloadURL = URL(string: asset.browserDownloadURL) else {
+      Logger.daemon.error("No suitable asset found in helper release")
+      ActivityLog.logAsync(.system, "Helper auto-install failed: no suitable asset")
+      return false
+    }
+
+    do {
+      let tempDir = FileManager.default.temporaryDirectory
+        .appendingPathComponent("lidguard-helper-\(UUID().uuidString)")
+      try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+      defer { try? FileManager.default.removeItem(at: tempDir) }
+
+      let pkgPath = tempDir.appendingPathComponent(asset.name)
+      try downloadFile(from: downloadURL, to: pkgPath)
+
+      // Unload existing daemon and wait for cleanup
+      unloadDaemon()
+      Thread.sleep(forTimeInterval: 1)
+
+      let escapedPath = pkgPath.path.replacingOccurrences(of: "\\", with: "\\\\")
+        .replacingOccurrences(of: "\"", with: "\\\"")
+      let script = "do shell script \"/usr/sbin/installer -pkg \\\"\(escapedPath)\\\" -target /\" with administrator privileges"
+      let installer = Process()
+      installer.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+      installer.arguments = ["-e", script]
+      installer.standardOutput = FileHandle.nullDevice
+      installer.standardError = FileHandle.nullDevice
+      try installer.run()
+      installer.waitUntilExit()
+
+      guard installer.terminationStatus == 0 else {
+        throw NSError(domain: "HelperInstall", code: 1,
+                      userInfo: [NSLocalizedDescriptionKey: "PKG installer exited with status \(installer.terminationStatus)"])
+      }
+
+      Logger.daemon.info("Helper daemon installed successfully")
+      ActivityLog.logAsync(.system, "Helper daemon installed successfully")
+      return true
+    } catch {
+      Logger.daemon.error("Helper install failed: \(error.localizedDescription)")
+      ActivityLog.logAsync(.system, "Helper auto-install failed: \(error.localizedDescription)")
+      return false
+    }
+  }
+
+  nonisolated private static func downloadFile(from url: URL, to destination: URL) throws {
     let semaphore = DispatchSemaphore(value: 0)
     var downloadError: Error?
 
@@ -415,20 +424,12 @@ final class HelperInstallService {
     try? plistData?.write(to: plistDst)
   }
 
-  private func unloadDaemon() {
+  nonisolated private static func unloadDaemon() {
+    let plistDst = FileManager.default.homeDirectoryForCurrentUser
+      .appendingPathComponent("Library/LaunchAgents/\(Config.Daemon.launchAgentLabel).plist")
     let process = Process()
     process.executableURL = URL(fileURLWithPath: "/bin/launchctl")
     process.arguments = ["bootout", "gui/\(getuid())", plistDst.path]
-    process.standardOutput = FileHandle.nullDevice
-    process.standardError = FileHandle.nullDevice
-    try? process.run()
-    process.waitUntilExit()
-  }
-
-  private func loadDaemon() {
-    let process = Process()
-    process.executableURL = URL(fileURLWithPath: "/bin/launchctl")
-    process.arguments = ["bootstrap", "gui/\(getuid())", plistDst.path]
     process.standardOutput = FileHandle.nullDevice
     process.standardError = FileHandle.nullDevice
     try? process.run()
@@ -438,7 +439,7 @@ final class HelperInstallService {
 
 // MARK: - GitHub Release Model
 
-private struct GitHubReleaseInfo: Decodable {
+private struct GitHubReleaseInfo: Decodable, Sendable {
   let tagName: String
   let assets: [GitHubAsset]
 
@@ -448,7 +449,7 @@ private struct GitHubReleaseInfo: Decodable {
   }
 }
 
-private struct GitHubAsset: Decodable {
+private struct GitHubAsset: Decodable, Sendable {
   let name: String
   let browserDownloadURL: String
 

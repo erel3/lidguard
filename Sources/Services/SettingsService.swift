@@ -13,6 +13,7 @@ extension Notification.Name {
   static let helperUpdateDismissed = Notification.Name("com.lidguard.helperUpdateDismissed")
 }
 
+@MainActor
 final class SettingsService {
   static let shared = SettingsService()
   private let defaults = UserDefaults.standard
@@ -429,7 +430,7 @@ final class SettingsService {
     return mobile?.value.stringValue ?? me.phoneNumbers.first?.value.stringValue
   }
 
-  func requestContactsAccess(completion: @escaping (Bool) -> Void) {
+  func requestContactsAccess(completion: @escaping @Sendable (Bool) -> Void) {
     contactStore.requestAccess(for: .contacts) { granted, _ in
       DispatchQueue.main.async {
         completion(granted)
@@ -437,7 +438,7 @@ final class SettingsService {
     }
   }
 
-  func requestContactsAccessIfNeeded(completion: @escaping () -> Void) {
+  func requestContactsAccessIfNeeded(completion: @escaping @Sendable () -> Void) {
     let status = CNContactStore.authorizationStatus(for: .contacts)
     if status == .notDetermined {
       requestContactsAccess { _ in

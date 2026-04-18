@@ -2,14 +2,14 @@ import AppKit
 import Foundation
 import os.log
 
-enum ProtectionState {
+enum ProtectionState: Sendable {
   case disabled
   case enabled
   case enabledBluetooth
   case theftMode
 }
 
-enum TheftTrigger {
+enum TheftTrigger: Sendable {
   case lidClosed
   case powerDisconnected
   case motionDetected(String)
@@ -24,21 +24,23 @@ enum TheftTrigger {
   }
 }
 
+@MainActor
 protocol TheftProtectionDelegate: AnyObject {
   func theftProtectionStateDidChange(_ service: TheftProtectionService, state: ProtectionState)
   func theftProtectionShortcutTriggered(_ service: TheftProtectionService)
   func theftProtectionBluetoothShortcutTriggered(_ service: TheftProtectionService)
 }
 
+@MainActor
 final class TheftProtectionService {
   // Daemon connection state — mutated only by TheftProtectionService
   // and its +Daemon extension (same module). Readable elsewhere.
-  static var daemonConnected = false
-  static var daemonVersion: String?
-  static var helperNeedsUpdate = false
-  static var helperDisconnectedForUpdate = false
-  static var helperAccessibilityGranted = false
-  static var daemonMotionSupported = true
+  @MainActor static var daemonConnected = false
+  @MainActor static var daemonVersion: String?
+  @MainActor static var helperNeedsUpdate = false
+  @MainActor static var helperDisconnectedForUpdate = false
+  @MainActor static var helperAccessibilityGranted = false
+  @MainActor static var daemonMotionSupported = true
 
   weak var delegate: TheftProtectionDelegate?
 
@@ -72,22 +74,22 @@ final class TheftProtectionService {
 
   private(set) var state: ProtectionState = .disabled
 
-  init(notificationService: NotificationService = TelegramService(),
-       deviceInfoCollector: DeviceInfoCollecting = DeviceInfoCollector(),
-       sleepPrevention: SleepPrevention = SleepPreventionService(),
-       lidMonitor: LidMonitorService = LidMonitorService(),
-       commandService: TelegramCommandService = TelegramCommandService(),
-       sleepWakeService: SleepWakeService = SleepWakeService(),
-       powerMonitor: PowerMonitorService = PowerMonitorService(),
-       daemonClient: DaemonIPC = DaemonIPCClient()) {
-    self.notificationService = notificationService
-    self.deviceInfoCollector = deviceInfoCollector
-    self.sleepPrevention = sleepPrevention
-    self.lidMonitor = lidMonitor
-    self.commandService = commandService
-    self.sleepWakeService = sleepWakeService
-    self.powerMonitor = powerMonitor
-    self.daemonClient = daemonClient
+  init(notificationService: NotificationService? = nil,
+       deviceInfoCollector: DeviceInfoCollecting? = nil,
+       sleepPrevention: SleepPrevention? = nil,
+       lidMonitor: LidMonitorService? = nil,
+       commandService: TelegramCommandService? = nil,
+       sleepWakeService: SleepWakeService? = nil,
+       powerMonitor: PowerMonitorService? = nil,
+       daemonClient: DaemonIPC? = nil) {
+    self.notificationService = notificationService ?? TelegramService()
+    self.deviceInfoCollector = deviceInfoCollector ?? DeviceInfoCollector()
+    self.sleepPrevention = sleepPrevention ?? SleepPreventionService()
+    self.lidMonitor = lidMonitor ?? LidMonitorService()
+    self.commandService = commandService ?? TelegramCommandService()
+    self.sleepWakeService = sleepWakeService ?? SleepWakeService()
+    self.powerMonitor = powerMonitor ?? PowerMonitorService()
+    self.daemonClient = daemonClient ?? DaemonIPCClient()
 
     self.lidMonitor.delegate = self
     self.commandService.delegate = self
@@ -95,69 +97,68 @@ final class TheftProtectionService {
     self.powerMonitor.delegate = self
     self.globalShortcutService.delegate = self
     self.bluetoothProximityService.delegate = self
-    if let client = daemonClient as? DaemonIPCClient {
+    if let client = self.daemonClient as? DaemonIPCClient {
       client.delegate = self
     }
 
-    NotificationCenter.default.addObserver(
-      forName: .shortcutSettingsChanged, object: nil, queue: .main
-    ) { [weak self] _ in
-      self?.globalShortcutService.restart()
-    }
+    installNotificationObservers()
+  }
 
-    NotificationCenter.default.addObserver(
-      forName: .motionSettingsChanged, object: nil, queue: .main
-    ) { [weak self] _ in
-      self?.handleMotionSettingsChange()
+  private func installNotificationObservers() {
+    let center = NotificationCenter.default
+    center.addObserver(forName: .shortcutSettingsChanged, object: nil, queue: .main) { [weak self] _ in
+      MainActor.assumeIsolated { self?.globalShortcutService.restart() }
     }
-
-    NotificationCenter.default.addObserver(
-      forName: .bluetoothSettingsChanged, object: nil, queue: .main
-    ) { [weak self] _ in
-      if SettingsService.shared.bluetoothAutoArmEnabled {
-        self?.bluetoothProximityService.restart()
-      } else {
-        self?.bluetoothProximityService.stop()
-      }
-      self?.globalShortcutService.restart()
+    center.addObserver(forName: .motionSettingsChanged, object: nil, queue: .main) { [weak self] _ in
+      MainActor.assumeIsolated { self?.handleMotionSettingsChange() }
     }
-
-    NotificationCenter.default.addObserver(
-      forName: .telegramSettingsChanged, object: nil, queue: .main
-    ) { [weak self] _ in
-      self?.commandService.stop()
-      self?.commandService.start()
-      if SettingsService.shared.telegramEnabled {
-        self?.deviceInfoCollector.warmUp()
+    center.addObserver(forName: .bluetoothSettingsChanged, object: nil, queue: .main) { [weak self] _ in
+      MainActor.assumeIsolated {
+        if SettingsService.shared.bluetoothAutoArmEnabled {
+          self?.bluetoothProximityService.restart()
+        } else {
+          self?.bluetoothProximityService.stop()
+        }
       }
     }
-
-    NotificationCenter.default.addObserver(
-      forName: .helperStatusRequested, object: nil, queue: .main
-    ) { [weak self] _ in
-      guard let self, self.daemonClient.isConnected else { return }
-      self.daemonClient.getStatus()
+    center.addObserver(forName: .telegramSettingsChanged, object: nil, queue: .main) { [weak self] _ in
+      MainActor.assumeIsolated {
+        self?.commandService.stop()
+        self?.commandService.start()
+        if SettingsService.shared.telegramEnabled {
+          self?.deviceInfoCollector.warmUp()
+        }
+      }
     }
-
-    NotificationCenter.default.addObserver(
-      forName: .helperUpdateDismissed, object: nil, queue: .main
-    ) { [weak self] _ in
-      guard let self else { return }
-      self.daemonClient.disconnect()
-      TheftProtectionService.helperDisconnectedForUpdate = true
-      TheftProtectionService.daemonConnected = false
-      TheftProtectionService.daemonVersion = nil
-      NotificationCenter.default.post(name: .daemonConnectionChanged, object: nil)
-      Logger.daemon.warning("Disconnected from helper — required update was dismissed")
-      ActivityLog.logAsync(.system, "Helper disconnected — update required but dismissed")
+    center.addObserver(forName: .helperStatusRequested, object: nil, queue: .main) { [weak self] _ in
+      MainActor.assumeIsolated {
+        guard let self, self.daemonClient.isConnected else { return }
+        self.daemonClient.getStatus()
+      }
     }
+    center.addObserver(forName: .helperUpdateDismissed, object: nil, queue: .main) { [weak self] _ in
+      MainActor.assumeIsolated { self?.handleHelperUpdateDismissed() }
+    }
+    center.addObserver(forName: .helperInstallCompleted, object: nil, queue: .main) { [weak self] _ in
+      MainActor.assumeIsolated { self?.handleHelperInstallCompleted() }
+    }
+  }
 
-    NotificationCenter.default.addObserver(
-      forName: .helperInstallCompleted, object: nil, queue: .main
-    ) { [weak self] _ in
-      // Retry a few times — helper may not be running yet after manual install
-      for delay in [0.0, 2.0, 5.0, 10.0] {
-        DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+  private func handleHelperUpdateDismissed() {
+    daemonClient.disconnect()
+    TheftProtectionService.helperDisconnectedForUpdate = true
+    TheftProtectionService.daemonConnected = false
+    TheftProtectionService.daemonVersion = nil
+    NotificationCenter.default.post(name: .daemonConnectionChanged, object: nil)
+    Logger.daemon.warning("Disconnected from helper — required update was dismissed")
+    ActivityLog.logAsync(.system, "Helper disconnected — update required but dismissed")
+  }
+
+  private func handleHelperInstallCompleted() {
+    // Retry a few times — helper may not be running yet after manual install
+    for delay in [0.0, 2.0, 5.0, 10.0] {
+      DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+        MainActor.assumeIsolated {
           guard let self, !self.daemonClient.isConnected else { return }
           self.daemonClient.reconnectNow()
         }
@@ -181,10 +182,12 @@ final class TheftProtectionService {
       forName: NSNotification.Name("com.apple.screenIsUnlocked"),
       object: nil, queue: .main
     ) { [weak self] _ in
-      guard let self = self, self.state == .theftMode else { return }
-      Logger.theft.info("Screen unlocked — deactivating theft mode")
-      ActivityLog.logAsync(.theft, "Screen unlocked — owner authenticated")
-      self.deactivateTheftMode()
+      MainActor.assumeIsolated {
+        guard let self, self.state == .theftMode else { return }
+        Logger.theft.info("Screen unlocked — deactivating theft mode")
+        ActivityLog.logAsync(.theft, "Screen unlocked — owner authenticated")
+        self.deactivateTheftMode()
+      }
     }
 
     Logger.theft.info("Started (protection disabled)")
@@ -436,47 +439,48 @@ final class TheftProtectionService {
 
   func sendStatus() {
     deviceInfoCollector.collect { [weak self] info in
-      guard let self = self else { return }
-      let status: String
-      let keyboard: TelegramKeyboard
-
-      switch self.state {
-      case .disabled:
-        status = "🔴 PROTECTION DISABLED"
-        keyboard = .disabled
-      case .enabled:
-        status = "✅ Monitoring"
-        keyboard = .enabled
-      case .enabledBluetooth:
-        status = "📶 Auto-Armed (Bluetooth)"
-        keyboard = .enabled
-      case .theftMode:
-        status = "🚨 THEFT MODE ACTIVE"
-        keyboard = AlarmAudioManager.shared.isPlaying ? .theftModeAlarmOn : .theftMode
+      MainActor.assumeIsolated {
+        guard let self else { return }
+        self.sendStatusWithInfo(info)
       }
+    }
+  }
 
-      let lidState = self.lidMonitor.isClosed ? "closed" : "open"
-      let chargerState = self.powerMonitor.isCharging() ? "connected" : "disconnected"
-      let triggers = self.activeTriggerNames()
-      let behaviors = self.activeBehaviorNames()
+  private func sendStatusWithInfo(_ info: DeviceInfo) {
+    let status: String
+    let keyboard: TelegramKeyboard
 
-      var hardwareInfo = ""
-      hardwareInfo += "🖥 <b>Lid:</b> \(lidState)\n"
-      hardwareInfo += "🔌 <b>Charger:</b> \(chargerState)\n"
-      hardwareInfo += "⚡️ <b>Triggers:</b> \(triggers.isEmpty ? "none" : triggers.joined(separator: ", "))\n"
-      hardwareInfo += "🛡 <b>Behaviors:</b> \(behaviors.isEmpty ? "none" : behaviors.joined(separator: ", "))\n"
+    switch state {
+    case .disabled:
+      status = "🔴 PROTECTION DISABLED"
+      keyboard = .disabled
+    case .enabled:
+      status = "✅ Monitoring"
+      keyboard = .enabled
+    case .enabledBluetooth:
+      status = "📶 Auto-Armed (Bluetooth)"
+      keyboard = .enabled
+    case .theftMode:
+      status = "🚨 THEFT MODE ACTIVE"
+      keyboard = AlarmAudioManager.shared.isPlaying ? .theftModeAlarmOn : .theftMode
+    }
 
-      let sendMessage = { [weak self] (btInfo: String) in
-        self?.notificationService.send(
-          message: "<b>STATUS: \(status)</b>\n\n\(hardwareInfo)\(btInfo)\n\(info.formattedMessage)",
-          keyboard: keyboard,
-          completion: nil
-        )
-      }
+    let lidState = lidMonitor.isClosed ? "closed" : "open"
+    let chargerState = powerMonitor.isCharging() ? "connected" : "disconnected"
+    let triggers = activeTriggerNames()
+    let behaviors = activeBehaviorNames()
 
-      let settings = SettingsService.shared
-      if settings.bluetoothAutoArmEnabled && settings.hasTrustedBLEDevices {
-        self.bluetoothProximityService.getDeviceStatus { devices in
+    var hardwareInfo = ""
+    hardwareInfo += "🖥 <b>Lid:</b> \(lidState)\n"
+    hardwareInfo += "🔌 <b>Charger:</b> \(chargerState)\n"
+    hardwareInfo += "⚡️ <b>Triggers:</b> \(triggers.isEmpty ? "none" : triggers.joined(separator: ", "))\n"
+    hardwareInfo += "🛡 <b>Behaviors:</b> \(behaviors.isEmpty ? "none" : behaviors.joined(separator: ", "))\n"
+
+    let settings = SettingsService.shared
+    if settings.bluetoothAutoArmEnabled && settings.hasTrustedBLEDevices {
+      bluetoothProximityService.getDeviceStatus { [weak self] devices in
+        MainActor.assumeIsolated {
+          guard let self else { return }
           var bt = "📶 <b>Bluetooth:</b> auto-arm on\n"
           for d in devices {
             if let rssi = d.rssi {
@@ -485,11 +489,19 @@ final class TheftProtectionService {
               bt += "  • \(d.name): not seen\n"
             }
           }
-          sendMessage(bt)
+          self.notificationService.send(
+            message: "<b>STATUS: \(status)</b>\n\n\(hardwareInfo)\(bt)\n\(info.formattedMessage)",
+            keyboard: keyboard,
+            completion: nil
+          )
         }
-      } else {
-        sendMessage("📶 <b>Bluetooth:</b> auto-arm off\n")
       }
+    } else {
+      notificationService.send(
+        message: "<b>STATUS: \(status)</b>\n\n\(hardwareInfo)📶 <b>Bluetooth:</b> auto-arm off\n\n\(info.formattedMessage)",
+        keyboard: keyboard,
+        completion: nil
+      )
     }
   }
 
@@ -500,11 +512,13 @@ final class TheftProtectionService {
   func sendTestAlert() {
     let keyboard: TelegramKeyboard = (state == .disabled) ? .disabled : .enabled
     deviceInfoCollector.collect { [weak self] info in
-      self?.notificationService.send(
-        message: "🧪 <b>TEST ALERT</b>\n\n\(info.formattedMessage)",
-        keyboard: keyboard,
-        completion: nil
-      )
+      MainActor.assumeIsolated {
+        self?.notificationService.send(
+          message: "🧪 <b>TEST ALERT</b>\n\n\(info.formattedMessage)",
+          keyboard: keyboard,
+          completion: nil
+        )
+      }
     }
     ActivityLog.logAsync(.system, "Test alert sent")
   }
@@ -514,23 +528,26 @@ final class TheftProtectionService {
     let subtitle = blocked ? "Someone tried to shut down!" : "Device may be force-powered off!"
 
     deviceInfoCollector.collect { [weak self] info in
-      guard let self = self else { return }
-      self.notificationService.send(
-        message: "🚨 <b>\(title)</b>\n\n⚠️ \(subtitle)\n\n\(info.formattedMessage)",
-        keyboard: self.state == .theftMode
-          ? (AlarmAudioManager.shared.isPlaying ? .theftModeAlarmOn : .theftMode)
-          : .enabled,
-        completion: nil
-      )
+      MainActor.assumeIsolated {
+        guard let self else { return }
+        self.notificationService.send(
+          message: "🚨 <b>\(title)</b>\n\n⚠️ \(subtitle)\n\n\(info.formattedMessage)",
+          keyboard: self.state == .theftMode
+            ? (AlarmAudioManager.shared.isPlaying ? .theftModeAlarmOn : .theftMode)
+            : .enabled,
+          completion: nil
+        )
+      }
     }
-
   }
 
   private func startTracking() {
-    trackingTimer = DispatchSource.makeTimerSource(queue: trackingQueue)
+    trackingTimer = DispatchSource.makeTimerSource(queue: .main)
     trackingTimer?.schedule(deadline: .now() + Config.Tracking.interval, repeating: Config.Tracking.interval)
     trackingTimer?.setEventHandler { [weak self] in
-      self?.sendUpdate(type: .tracking)
+      MainActor.assumeIsolated {
+        self?.sendUpdate(type: .tracking)
+      }
     }
     trackingTimer?.resume()
   }
@@ -544,25 +561,32 @@ final class TheftProtectionService {
     updateCount += 1
 
     deviceInfoCollector.collect { [weak self] info in
-      guard let self = self else { return }
-
-      let prefix: String
-      switch type {
-      case .initial:
-        let reason = self.currentTrigger?.description ?? "Unknown"
-        prefix = "🚨 <b>THEFT MODE ACTIVATED</b>\n⚠️ <b>Trigger:</b> \(reason)\n\n"
-      case .tracking:
-        prefix = "📡 <b>TRACKING UPDATE #\(self.updateCount)</b>\n\n"
-        ActivityLog.logAsync(.theft, "Tracking update #\(self.updateCount) sent")
+      MainActor.assumeIsolated {
+        guard let self else { return }
+        self.deliverUpdate(type: type, info: info)
       }
+    }
+  }
 
-      let keyboard: TelegramKeyboard = AlarmAudioManager.shared.isPlaying ? .theftModeAlarmOn : .theftMode
-      self.notificationService.send(
-        message: prefix + info.formattedMessage,
-        keyboard: keyboard
-      ) { [weak self] success in
-        CFRunLoopPerformBlock(CFRunLoopGetMain(), CFRunLoopMode.commonModes.rawValue) {
-          guard let self = self, self.state == .theftMode else { return }
+  private func deliverUpdate(type: UpdateType, info: DeviceInfo) {
+    let prefix: String
+    switch type {
+    case .initial:
+      let reason = currentTrigger?.description ?? "Unknown"
+      prefix = "🚨 <b>THEFT MODE ACTIVATED</b>\n⚠️ <b>Trigger:</b> \(reason)\n\n"
+    case .tracking:
+      prefix = "📡 <b>TRACKING UPDATE #\(updateCount)</b>\n\n"
+      ActivityLog.logAsync(.theft, "Tracking update #\(updateCount) sent")
+    }
+
+    let keyboard: TelegramKeyboard = AlarmAudioManager.shared.isPlaying ? .theftModeAlarmOn : .theftMode
+    notificationService.send(
+      message: prefix + info.formattedMessage,
+      keyboard: keyboard
+    ) { [weak self] success in
+      DispatchQueue.main.async {
+        MainActor.assumeIsolated {
+          guard let self, self.state == .theftMode else { return }
           if success {
             self.telegramSucceededInTheftMode = true
             self.cancelOfflineSirenTimer()
@@ -570,7 +594,6 @@ final class TheftProtectionService {
             self.scheduleOfflineSiren()
           }
         }
-        CFRunLoopWakeUp(CFRunLoopGetMain())
       }
     }
   }

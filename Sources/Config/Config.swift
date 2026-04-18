@@ -15,6 +15,7 @@ extension Logger {
 }
 
 enum Config {
+  @MainActor
   enum Telegram {
     static var botToken: String? { SettingsService.shared.telegramBotToken }
     static var chatId: String? { SettingsService.shared.telegramChatId }
@@ -45,7 +46,7 @@ enum Config {
     static let port: UInt16 = 51423
     static let reconnectBaseDelay: TimeInterval = 2
     static let reconnectMaxDelay: TimeInterval = 30
-    static let minHelperVersion = "1.1.1"
+    static let minHelperVersion = "1.2.0"
     static let helperInstallDir = "Library/Application Support/LidGuard"
     static let helperBinaryName = "lidguard-helper"
     static let helperReleasesURL = "https://api.github.com/repos/Erel3/lidguard-helper/releases/latest"

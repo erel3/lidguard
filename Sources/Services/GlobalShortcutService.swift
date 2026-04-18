@@ -11,6 +11,7 @@ extension KeyboardShortcuts.Name {
   static let toggleBluetooth = Self("toggleBluetooth")
 }
 
+@MainActor
 protocol GlobalShortcutDelegate: AnyObject {
   func globalShortcutTriggered()
   func bluetoothShortcutTriggered()
@@ -18,6 +19,7 @@ protocol GlobalShortcutDelegate: AnyObject {
 
 /// Monitors for user-configured global keyboard shortcuts.
 /// Uses CGEventTap via KeyboardShortcuts library — requires Input Monitoring permission.
+@MainActor
 final class GlobalShortcutService {
   weak var delegate: GlobalShortcutDelegate?
 

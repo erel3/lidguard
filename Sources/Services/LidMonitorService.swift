@@ -2,11 +2,13 @@ import Foundation
 import IOKit
 import os.log
 
+@MainActor
 protocol LidMonitorDelegate: AnyObject {
   func lidMonitorDidDetectClose(_ monitor: LidMonitorService)
   func lidMonitorDidDetectOpen(_ monitor: LidMonitorService)
 }
 
+@MainActor
 final class LidMonitorService {
   weak var delegate: LidMonitorDelegate?
 

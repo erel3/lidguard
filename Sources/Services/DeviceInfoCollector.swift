@@ -1,60 +1,68 @@
 import Foundation
 import CoreLocation
 
+@MainActor
 protocol DeviceInfoCollecting {
   func warmUp()
-  func collect(completion: @escaping (DeviceInfo) -> Void)
+  func collect(completion: @escaping @Sendable (DeviceInfo) -> Void)
 }
 
+@MainActor
 final class DeviceInfoCollector: DeviceInfoCollecting {
   private let locationService: LocationProvider
   private let systemInfoService: SystemInfoProvider
 
-  init(locationService: LocationProvider = LocationService(),
-       systemInfoService: SystemInfoProvider = SystemInfoService()) {
-    self.locationService = locationService
-    self.systemInfoService = systemInfoService
+  init(locationService: LocationProvider? = nil,
+       systemInfoService: SystemInfoProvider? = nil) {
+    self.locationService = locationService ?? LocationService()
+    self.systemInfoService = systemInfoService ?? SystemInfoService()
   }
 
   func warmUp() {
     locationService.requestAuthorization()
   }
 
-  func collect(completion: @escaping (DeviceInfo) -> Void) {
+  func collect(completion: @escaping @Sendable (DeviceInfo) -> Void) {
     let settings = SettingsService.shared
+    let trackLocation = settings.trackLocation
+    let trackPublicIP = settings.trackPublicIP
 
-    let locationBlock: (@escaping (CLLocation?) -> Void) -> Void = { callback in
-      if settings.trackLocation {
-        self.locationService.requestLocation { location in callback(location) }
-      } else {
-        callback(nil)
-      }
-    }
-
-    locationBlock { [weak self] location in
-      guard let self = self else { return }
-
-      let ipBlock: (@escaping (String?) -> Void) -> Void = { callback in
-        if settings.trackPublicIP {
-          self.systemInfoService.getPublicIP { ip in callback(ip) }
-        } else {
-          callback(nil)
+    fetchLocation(enabled: trackLocation) { [weak self] location in
+      MainActor.assumeIsolated {
+        guard let self else { return }
+        self.fetchIP(enabled: trackPublicIP) { [weak self] publicIP in
+          MainActor.assumeIsolated {
+            guard let self else { return }
+            let s = SettingsService.shared
+            let info = DeviceInfo(
+              timestamp: Date(),
+              location: location,
+              publicIP: publicIP,
+              wifiName: s.trackWiFi ? self.systemInfoService.getWiFiName() : nil,
+              batteryLevel: s.trackBattery ? self.systemInfoService.getBatteryLevel() : nil,
+              isCharging: s.trackBattery ? self.systemInfoService.isCharging() : nil,
+              deviceName: s.trackDeviceName ? self.systemInfoService.getDeviceName() : ""
+            )
+            completion(info)
+          }
         }
       }
+    }
+  }
 
-      ipBlock { publicIP in
-        let info = DeviceInfo(
-          timestamp: Date(),
-          location: location,
-          publicIP: publicIP,
-          wifiName: settings.trackWiFi ? self.systemInfoService.getWiFiName() : nil,
-          batteryLevel: settings.trackBattery ? self.systemInfoService.getBatteryLevel() : nil,
-          isCharging: settings.trackBattery ? self.systemInfoService.isCharging() : nil,
-          deviceName: settings.trackDeviceName ? self.systemInfoService.getDeviceName() : ""
-        )
+  private func fetchLocation(enabled: Bool, callback: @escaping @Sendable (CLLocation?) -> Void) {
+    if enabled {
+      locationService.requestLocation(completion: callback)
+    } else {
+      callback(nil)
+    }
+  }
 
-        completion(info)
-      }
+  private func fetchIP(enabled: Bool, callback: @escaping @Sendable (String?) -> Void) {
+    if enabled {
+      systemInfoService.getPublicIP(completion: callback)
+    } else {
+      callback(nil)
     }
   }
 }

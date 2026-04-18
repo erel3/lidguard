@@ -2,6 +2,7 @@ import Cocoa
 import os.log
 import SwiftUI
 
+@MainActor
 final class UpdateService {
   static let shared = UpdateService()
 
@@ -22,7 +23,7 @@ final class UpdateService {
 
     if !initialCheckDone {
       initialCheckDone = true
-      checkQueue.asyncAfter(deadline: .now() + 5) { [weak self] in
+      DispatchQueue.main.asyncAfter(deadline: .now() + 5) { [weak self] in
         self?.checkForUpdates(silent: true)
       }
     }
@@ -47,11 +48,13 @@ final class UpdateService {
       delay = interval
     }
 
-    let timer = DispatchSource.makeTimerSource(queue: checkQueue)
+    let timer = DispatchSource.makeTimerSource(queue: .main)
     timer.schedule(deadline: .now() + delay, repeating: interval)
     timer.setEventHandler { [weak self] in
-      guard let self = self, self.settings.autoUpdateEnabled else { return }
-      self.checkForUpdates(silent: true)
+      MainActor.assumeIsolated {
+        guard let self = self, self.settings.autoUpdateEnabled else { return }
+        self.checkForUpdates(silent: true)
+      }
     }
     timer.resume()
     periodicTimer = timer
@@ -62,11 +65,11 @@ final class UpdateService {
   private func logAndShowError(_ message: String, silent: Bool) {
     logger.error("\(message)")
     if !silent {
-      DispatchQueue.main.async { self.showError(message) }
+      showError(message)
     }
   }
 
-  func checkForUpdates(silent: Bool, completion: (() -> Void)? = nil) {
+  func checkForUpdates(silent: Bool, completion: (@Sendable () -> Void)? = nil) {
     guard let url = URL(string: Config.GitHub.releasesURL) else {
       completion?()
       return
@@ -78,67 +81,67 @@ final class UpdateService {
     request.timeoutInterval = 15
 
     URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
-      guard let self = self else { completion?(); return }
-
-      self.settings.lastUpdateCheckDate = Date()
-
-      if let error = error {
-        self.logAndShowError("Could not reach GitHub: \(error.localizedDescription)", silent: silent)
-        completion?()
-        return
-      }
-
-      guard let httpResponse = response as? HTTPURLResponse,
-            (200...299).contains(httpResponse.statusCode),
-            let data = data else {
-        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
-        self.logAndShowError("Update check HTTP error: \(status)", silent: silent)
-        completion?()
-        return
-      }
-
-      let releases: [GitHubRelease]
-      do {
-        releases = try JSONDecoder().decode([GitHubRelease].self, from: data)
-      } catch {
-        self.logAndShowError("Could not parse GitHub response: \(error)", silent: silent)
-        completion?()
-        return
-      }
-
-      let localVersion = Config.App.version
-      let newerReleases = releases.filter { self.isNewer($0.version, than: localVersion) }
-        .sorted { self.isNewer($0.version, than: $1.version) }  // newest first
-
-      guard let latest = newerReleases.first else {
-        self.logger.info("App is up to date (\(localVersion))")
-        if !silent {
-          DispatchQueue.main.async { self.showUpToDate() }
-        }
-        completion?()
-        return
-      }
-
-      // Skip version check: silent auto-checks respect it, manual checks don't
-      if silent && self.settings.skippedVersion == latest.version {
-        self.logger.info("Skipping update to \(latest.version) (user skipped)")
-        completion?()
-        return
-      }
-
-      // Combine changelogs from all newer releases
-      let combinedChangelog = newerReleases.map { release in
-        let header = "## v\(release.version)"
-        let body = release.body ?? "No release notes."
-        return "\(header)\n\(body)"
-      }.joined(separator: "\n\n")
-
-      self.hasUpdateAvailable = true
+      let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
+      let errorMessage = error?.localizedDescription
       DispatchQueue.main.async {
-        self.showUpdateWindow(release: latest, changelog: combinedChangelog)
+        MainActor.assumeIsolated {
+          guard let self = self else { completion?(); return }
+          self.handleCheckResponse(
+            data: data,
+            statusCode: statusCode,
+            errorMessage: errorMessage,
+            silent: silent
+          )
+          completion?()
+        }
       }
-      completion?()
     }.resume()
+  }
+
+  private func handleCheckResponse(data: Data?, statusCode: Int, errorMessage: String?, silent: Bool) {
+    settings.lastUpdateCheckDate = Date()
+
+    if let errorMessage {
+      logAndShowError("Could not reach GitHub: \(errorMessage)", silent: silent)
+      return
+    }
+
+    guard (200...299).contains(statusCode), let data = data else {
+      logAndShowError("Update check HTTP error: \(statusCode)", silent: silent)
+      return
+    }
+
+    let releases: [GitHubRelease]
+    do {
+      releases = try JSONDecoder().decode([GitHubRelease].self, from: data)
+    } catch {
+      logAndShowError("Could not parse GitHub response: \(error)", silent: silent)
+      return
+    }
+
+    let localVersion = Config.App.version
+    let newerReleases = releases.filter { isNewer($0.version, than: localVersion) }
+      .sorted { isNewer($0.version, than: $1.version) }  // newest first
+
+    guard let latest = newerReleases.first else {
+      logger.info("App is up to date (\(localVersion))")
+      if !silent { showUpToDate() }
+      return
+    }
+
+    if silent && settings.skippedVersion == latest.version {
+      logger.info("Skipping update to \(latest.version) (user skipped)")
+      return
+    }
+
+    let combinedChangelog = newerReleases.map { release in
+      let header = "## v\(release.version)"
+      let body = release.body ?? "No release notes."
+      return "\(header)\n\(body)"
+    }.joined(separator: "\n\n")
+
+    hasUpdateAvailable = true
+    showUpdateWindow(release: latest, changelog: combinedChangelog)
   }
 
   private func showUpdateWindow(release: GitHubRelease, changelog: String) {
@@ -204,9 +207,9 @@ final class UpdateService {
       window.contentView = NSHostingView(rootView: progressView)
     }
 
+    let version = release.version
+    let downloadDest = downloadURL
     checkQueue.async { [weak self] in
-      guard let self = self else { return }
-
       let tempDir = FileManager.default.temporaryDirectory
         .appendingPathComponent("lidguard-update-\(UUID().uuidString)")
 
@@ -214,10 +217,9 @@ final class UpdateService {
         try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
         let zipPath = tempDir.appendingPathComponent("LidGuard.zip")
 
-        try self.downloadFile(from: downloadURL, to: zipPath)
-        let newAppURL = try self.unzipAndVerify(zipPath: zipPath, in: tempDir)
+        try Self.downloadFile(from: downloadDest, to: zipPath)
+        let newAppURL = try Self.unzipAndVerify(zipPath: zipPath, in: tempDir)
 
-        // Replace current bundle atomically
         let currentAppURL = Bundle.main.bundleURL
         let staging = tempDir.appendingPathComponent("LidGuard-staged.app")
         try FileManager.default.moveItem(at: newAppURL, to: staging)
@@ -230,26 +232,32 @@ final class UpdateService {
           resultingItemURL: nil
         )
 
-        self.hasUpdateAvailable = false
-        self.settings.skippedVersion = nil
         try? FileManager.default.removeItem(at: tempDir)
-        ActivityLog.logAsync(.system, "Update to v\(release.version) installed")
+        ActivityLog.logAsync(.system, "Update to v\(version) installed")
 
         DispatchQueue.main.async {
-          self.restartApp(at: currentAppURL)
+          MainActor.assumeIsolated {
+            guard let self = self else { return }
+            self.hasUpdateAvailable = false
+            self.settings.skippedVersion = nil
+            self.restartApp(at: currentAppURL)
+          }
         }
       } catch {
-        self.logger.error("Update failed: \(error.localizedDescription)")
         try? FileManager.default.removeItem(at: tempDir)
         DispatchQueue.main.async {
-          self.updateWindow?.close()
-          self.showError("Update failed: \(error.localizedDescription)")
+          MainActor.assumeIsolated {
+            guard let self = self else { return }
+            self.logger.error("Update failed: \(error.localizedDescription)")
+            self.updateWindow?.close()
+            self.showError("Update failed: \(error.localizedDescription)")
+          }
         }
       }
     }
   }
 
-  private func downloadFile(from url: URL, to destination: URL) throws {
+  nonisolated private static func downloadFile(from url: URL, to destination: URL) throws {
     let semaphore = DispatchSemaphore(value: 0)
     var downloadError: Error?
 
@@ -275,7 +283,7 @@ final class UpdateService {
     if let error = downloadError { throw error }
   }
 
-  private func unzipAndVerify(zipPath: URL, in tempDir: URL) throws -> URL {
+  nonisolated private static func unzipAndVerify(zipPath: URL, in tempDir: URL) throws -> URL {
     let unzipDir = tempDir.appendingPathComponent("unzipped")
     try FileManager.default.createDirectory(at: unzipDir, withIntermediateDirectories: true)
 
@@ -340,7 +348,7 @@ final class UpdateService {
 
   // MARK: - Version Comparison
 
-  private func isNewer(_ remote: String, than local: String) -> Bool {
+  nonisolated private func isNewer(_ remote: String, than local: String) -> Bool {
     func parts(_ v: String) -> [Int] {
       let clean = v.trimmingCharacters(in: CharacterSet(charactersIn: "v"))
         .split(separator: "-").first.map(String.init) ?? v
@@ -379,7 +387,7 @@ final class UpdateService {
 
 // MARK: - API Models
 
-private struct GitHubReleaseAsset: Decodable {
+private struct GitHubReleaseAsset: Decodable, Sendable {
   let name: String
   let browserDownloadURL: String
 
@@ -389,7 +397,7 @@ private struct GitHubReleaseAsset: Decodable {
   }
 }
 
-private struct GitHubRelease: Decodable {
+private struct GitHubRelease: Decodable, Sendable {
   let tagName: String
   let body: String?
   let assets: [GitHubReleaseAsset]

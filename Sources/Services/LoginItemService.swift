@@ -1,6 +1,7 @@
 import os.log
 import ServiceManagement
 
+@MainActor
 final class LoginItemService {
   static let shared = LoginItemService()
 

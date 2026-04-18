@@ -9,7 +9,7 @@ enum NetworkRetry {
     delay: TimeInterval = 2.0,
     logger: Logger,
     logCategory: LogCategory,
-    completion: ((Bool) -> Void)? = nil
+    completion: (@Sendable (Bool) -> Void)? = nil
   ) {
     session.dataTask(with: request) { _, response, error in
       if let error = error {

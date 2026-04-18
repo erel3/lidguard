@@ -1,12 +1,14 @@
 import Foundation
 import IOKit.pwr_mgt
 
+@MainActor
 protocol SleepPrevention {
   func enable()
   func disable()
   var isEnabled: Bool { get }
 }
 
+@MainActor
 final class SleepPreventionService: SleepPrevention {
   private var idleSleepAssertionID: IOPMAssertionID = 0
   private var systemSleepAssertionID: IOPMAssertionID = 0

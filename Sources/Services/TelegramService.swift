@@ -1,7 +1,7 @@
 import Foundation
 import os.log
 
-enum TelegramKeyboard {
+enum TelegramKeyboard: Sendable {
   case none
   case theftMode           // "Safe" + "Alarm"
   case theftModeAlarmOn    // "Safe" + "Stop Alarm"
@@ -9,16 +9,18 @@ enum TelegramKeyboard {
   case disabled            // "Status" + "Enable"
 }
 
+@MainActor
 protocol NotificationService {
-  func send(message: String, keyboard: TelegramKeyboard, completion: ((Bool) -> Void)?)
+  func send(message: String, keyboard: TelegramKeyboard, completion: (@Sendable (Bool) -> Void)?)
 }
 
 extension NotificationService {
-  func send(message: String, completion: ((Bool) -> Void)?) {
+  func send(message: String, completion: (@Sendable (Bool) -> Void)?) {
     send(message: message, keyboard: .none, completion: completion)
   }
 }
 
+@MainActor
 final class TelegramService: NotificationService {
   private let session: URLSession
 
@@ -26,7 +28,7 @@ final class TelegramService: NotificationService {
     self.session = session
   }
 
-  func send(message: String, keyboard: TelegramKeyboard = .none, completion: ((Bool) -> Void)? = nil) {
+  func send(message: String, keyboard: TelegramKeyboard = .none, completion: (@Sendable (Bool) -> Void)? = nil) {
     guard Config.Telegram.isConfigured && Config.Telegram.isEnabled,
           let botToken = Config.Telegram.botToken,
           let chatId = Config.Telegram.chatId else {

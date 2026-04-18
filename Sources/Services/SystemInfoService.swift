@@ -3,14 +3,16 @@ import CoreWLAN
 import IOKit.ps
 import os.log
 
+@MainActor
 protocol SystemInfoProvider {
-  func getPublicIP(completion: @escaping (String?) -> Void)
+  func getPublicIP(completion: @escaping @Sendable (String?) -> Void)
   func getWiFiName() -> String?
   func getBatteryLevel() -> Int?
   func isCharging() -> Bool?
   func getDeviceName() -> String
 }
 
+@MainActor
 final class SystemInfoService: SystemInfoProvider {
   private let session: URLSession
   private let ipServiceURL = "https://api.ipify.org"
@@ -21,7 +23,7 @@ final class SystemInfoService: SystemInfoProvider {
     self.timeout = timeout
   }
 
-  func getPublicIP(completion: @escaping (String?) -> Void) {
+  func getPublicIP(completion: @escaping @Sendable (String?) -> Void) {
     guard let url = URL(string: ipServiceURL) else {
       completion(nil)
       return
@@ -31,15 +33,17 @@ final class SystemInfoService: SystemInfoProvider {
     request.timeoutInterval = timeout
 
     session.dataTask(with: request) { data, _, error in
-      if let error = error {
+      let result: String?
+      if let error {
         Logger.system.error("Failed to get public IP: \(error.localizedDescription)")
-        completion(nil)
-        return
-      }
-      if let data = data, let ip = String(data: data, encoding: .utf8) {
-        completion(ip.trimmingCharacters(in: .whitespacesAndNewlines))
+        result = nil
+      } else if let data, let ip = String(data: data, encoding: .utf8) {
+        result = ip.trimmingCharacters(in: .whitespacesAndNewlines)
       } else {
-        completion(nil)
+        result = nil
+      }
+      DispatchQueue.main.async {
+        completion(result)
       }
     }.resume()
   }

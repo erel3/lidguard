@@ -17,7 +17,7 @@ let package = Package(
       ],
       path: "Sources",
       swiftSettings: [
-        .swiftLanguageMode(.v5)
+        .swiftLanguageMode(.v6)
       ]
     )
   ]

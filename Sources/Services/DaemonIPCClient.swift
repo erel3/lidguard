@@ -2,6 +2,7 @@ import Foundation
 import Network
 import os.log
 
+@MainActor
 protocol DaemonIPCDelegate: AnyObject {
   func daemonDidConnect(_ client: DaemonIPCClient, version: String?)
   func daemonDidDisconnect(_ client: DaemonIPCClient)
@@ -30,7 +31,7 @@ protocol DaemonIPC: AnyObject {
   func getStatus()
 }
 
-final class DaemonIPCClient: DaemonIPC {
+final class DaemonIPCClient: DaemonIPC, @unchecked Sendable {
   weak var delegate: DaemonIPCDelegate?
 
   private let queue = DispatchQueue(label: "com.lidguard.daemon.ipc")
@@ -339,6 +340,10 @@ final class DaemonIPCClient: DaemonIPC {
     if message.success == true {
       state = .connected
       reconnectDelay = Config.Daemon.reconnectBaseDelay
+      // Helper's MotionMonitor session counter resets on every (re)launch, so
+      // a fresh auth means the cached `_motionSession` from a previous helper
+      // instance is no longer a valid lower bound — reset it.
+      _motionSession = 0
       let version = message.version
       Logger.daemon.info("Authenticated with helper daemon (v\(version ?? "unknown"))")
       flushPendingCommands()
@@ -406,8 +411,10 @@ final class DaemonIPCClient: DaemonIPC {
 
   // MARK: - Thread Helpers
 
-  private func notifyMainThread(_ block: @escaping () -> Void) {
-    CFRunLoopPerformBlock(CFRunLoopGetMain(), CFRunLoopMode.commonModes.rawValue, block)
+  private func notifyMainThread(_ block: @escaping @MainActor () -> Void) {
+    CFRunLoopPerformBlock(CFRunLoopGetMain(), CFRunLoopMode.commonModes.rawValue) {
+      MainActor.assumeIsolated { block() }
+    }
     CFRunLoopWakeUp(CFRunLoopGetMain())
   }
 }

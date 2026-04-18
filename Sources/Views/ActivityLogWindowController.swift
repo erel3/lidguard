@@ -1,6 +1,7 @@
 import Cocoa
 import SwiftUI
 
+@MainActor
 final class ActivityLogWindowController {
   static let shared = ActivityLogWindowController()
 
@@ -41,6 +42,7 @@ final class ActivityLogWindowController {
   }
 }
 
+@MainActor
 private class ActivityLogWindowDelegate: NSObject, NSWindowDelegate {
   static let shared = ActivityLogWindowDelegate()
 

@@ -2,6 +2,7 @@ import AVFoundation
 import CoreAudio
 import os.log
 
+@MainActor
 final class AlarmAudioManager {
   static let shared = AlarmAudioManager()
 

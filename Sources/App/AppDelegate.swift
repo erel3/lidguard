@@ -1,5 +1,6 @@
 import Cocoa
 
+@MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
   private var statusItem: NSStatusItem!
   private var menu: NSMenu!
@@ -27,7 +28,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     NotificationCenter.default.addObserver(
       forName: .bluetoothSettingsChanged, object: nil, queue: .main
     ) { [weak self] _ in
-      self?.updateStatus()
+      MainActor.assumeIsolated {
+        self?.updateStatus()
+      }
     }
 
     ActivityLog.logAsync(.system, "LidGuard v\(Config.App.version) started")
@@ -40,8 +43,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // First launch: unregister stale login item, show settings
     if !SettingsService.shared.isConfigured() {
       _ = LoginItemService.shared.disable()
-      DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-        self.showSettings()
+      DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+        MainActor.assumeIsolated {
+          self?.showSettings()
+        }
       }
     }
   }
@@ -195,15 +200,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     case .enabled, .enabledBluetooth:
       authService.authenticate(reason: "Authenticate to disable protection") { [weak self] success in
-        if success {
-          self?.theftProtection.disableProtection()
+        MainActor.assumeIsolated {
+          if success { self?.theftProtection.disableProtection() }
         }
       }
 
     case .theftMode:
       authService.authenticate(reason: "Authenticate to deactivate theft mode") { [weak self] success in
-        if success {
-          self?.theftProtection.deactivateTheftMode()
+        MainActor.assumeIsolated {
+          if success { self?.theftProtection.deactivateTheftMode() }
         }
       }
     }
@@ -488,15 +493,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     case .enabled, .enabledBluetooth:
       authService.authenticate(reason: "Authenticate to disable protection") { [weak self] success in
-        if success {
-          self?.theftProtection.disableProtection()
+        MainActor.assumeIsolated {
+          if success { self?.theftProtection.disableProtection() }
         }
       }
 
     case .theftMode:
       authService.authenticate(reason: "Authenticate to deactivate theft mode") { [weak self] success in
-        if success {
-          self?.theftProtection.deactivateTheftMode()
+        MainActor.assumeIsolated {
+          if success { self?.theftProtection.deactivateTheftMode() }
         }
       }
     }
@@ -506,31 +511,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     let settings = SettingsService.shared
     let turningOff = settings.bluetoothAutoArmEnabled
 
-    let perform = { [weak self] in
-      settings.bluetoothAutoArmEnabled = !settings.bluetoothAutoArmEnabled
-      NotificationCenter.default.post(name: .bluetoothSettingsChanged, object: nil)
-      if turningOff && self?.theftProtection.state == .enabledBluetooth {
-        self?.theftProtection.disableProtection()
-      }
-      self?.updateStatus()
-      ActivityLog.logAsync(.bluetooth, "Bluetooth auto-arm \(settings.bluetoothAutoArmEnabled ? "enabled" : "disabled")")
-    }
-
     if turningOff {
-      authService.authenticate(reason: "Authenticate to disable Bluetooth auto-arm") { success in
-        guard success else { return }
-        perform()
+      authService.authenticate(reason: "Authenticate to disable Bluetooth auto-arm") { [weak self] success in
+        MainActor.assumeIsolated {
+          guard success else { return }
+          self?.performBluetoothAutoArmToggle()
+        }
       }
     } else {
-      perform()
+      performBluetoothAutoArmToggle()
     }
+  }
+
+  private func performBluetoothAutoArmToggle() {
+    let settings = SettingsService.shared
+    settings.bluetoothAutoArmEnabled = !settings.bluetoothAutoArmEnabled
+    NotificationCenter.default.post(name: .bluetoothSettingsChanged, object: nil)
+    if !settings.bluetoothAutoArmEnabled && theftProtection.state == .enabledBluetooth {
+      theftProtection.disableProtection()
+    }
+    updateStatus()
+    ActivityLog.logAsync(.bluetooth, "Bluetooth auto-arm \(settings.bluetoothAutoArmEnabled ? "enabled" : "disabled")")
   }
 
   @objc private func quitApp() {
     authService.authenticate(reason: "Authenticate to quit \(Config.App.name)") { [weak self] success in
-      if success {
-        self?.allowQuit = true
-        NSApplication.shared.terminate(nil)
+      MainActor.assumeIsolated {
+        if success {
+          self?.allowQuit = true
+          NSApplication.shared.terminate(nil)
+        }
       }
     }
   }
@@ -541,8 +551,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
   @objc private func openSettings() {
     authService.authenticate(reason: "Authenticate to open Settings") { [weak self] success in
-      if success {
-        self?.showSettings()
+      MainActor.assumeIsolated {
+        if success { self?.showSettings() }
       }
     }
   }
@@ -595,8 +605,10 @@ extension AppDelegate: TheftProtectionDelegate {
       service.enableProtection(lockScreen: SettingsService.shared.lockScreenOnShortcut)
     case .enabled, .enabledBluetooth:
       authService.authenticate(reason: "Authenticate to disable protection") { [weak self] success in
-        guard success else { return }
-        self?.theftProtection.disableProtection()
+        MainActor.assumeIsolated {
+          guard success else { return }
+          self?.theftProtection.disableProtection()
+        }
       }
     case .theftMode:
       break
@@ -610,14 +622,16 @@ extension AppDelegate: TheftProtectionDelegate {
     if settings.bluetoothAutoArmEnabled {
       // Turning off — require Touch ID
       authService.authenticate(reason: "Authenticate to disable Bluetooth auto-arm") { [weak self] success in
-        guard success else { return }
-        settings.bluetoothAutoArmEnabled = false
-        NotificationCenter.default.post(name: .bluetoothSettingsChanged, object: nil)
-        if self?.theftProtection.state == .enabledBluetooth {
-          self?.theftProtection.disableProtection()
+        MainActor.assumeIsolated {
+          guard success else { return }
+          settings.bluetoothAutoArmEnabled = false
+          NotificationCenter.default.post(name: .bluetoothSettingsChanged, object: nil)
+          if self?.theftProtection.state == .enabledBluetooth {
+            self?.theftProtection.disableProtection()
+          }
+          self?.updateStatus()
+          ActivityLog.logAsync(.bluetooth, "Bluetooth auto-arm disabled via shortcut")
         }
-        self?.updateStatus()
-        ActivityLog.logAsync(.bluetooth, "Bluetooth auto-arm disabled via shortcut")
       }
     } else {
       // Turning on — no auth needed

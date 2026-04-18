@@ -1,9 +1,9 @@
 import Foundation
 import os.log
 
+@MainActor
 final class TelegramVerificationService {
   private let session: URLSession
-  private let queue = DispatchQueue(label: "com.lidguard.telegram.verification", qos: .utility)
 
   private var timer: DispatchSourceTimer?
   private var lastUpdateId: Int?
@@ -17,23 +17,24 @@ final class TelegramVerificationService {
     timer?.cancel()
   }
 
-  func start(botToken: String, code: String, onVerified: @escaping (String) -> Void) {
-    queue.sync { stopInternal() }
+  func start(botToken: String, code: String, onVerified: @escaping @Sendable (String) -> Void) {
+    stopInternal()
 
-    let newTimer = DispatchSource.makeTimerSource(queue: queue)
+    let newTimer = DispatchSource.makeTimerSource(queue: .main)
     newTimer.schedule(deadline: .now(), repeating: 2.0)
     newTimer.setEventHandler { [weak self] in
-      self?.pollUpdates(botToken: botToken, code: code, onVerified: onVerified)
+      MainActor.assumeIsolated {
+        self?.pollUpdates(botToken: botToken, code: code, onVerified: onVerified)
+      }
     }
-    queue.sync { timer = newTimer }
+    timer = newTimer
     newTimer.resume()
   }
 
   func stop() {
-    queue.sync { stopInternal() }
+    stopInternal()
   }
 
-  /// Must be called on `queue`
   private func stopInternal() {
     timer?.cancel()
     timer = nil
@@ -41,8 +42,7 @@ final class TelegramVerificationService {
     isPolling = false
   }
 
-  /// Called on `queue` by the timer
-  private func pollUpdates(botToken: String, code: String, onVerified: @escaping (String) -> Void) {
+  private func pollUpdates(botToken: String, code: String, onVerified: @escaping @Sendable (String) -> Void) {
     guard !isPolling else { return }
     isPolling = true
 
@@ -57,13 +57,13 @@ final class TelegramVerificationService {
     }
 
     let task = session.dataTask(with: url) { [weak self] data, _, error in
-      guard let self = self, let data = data, error == nil else {
-        self?.queue.async { self?.isPolling = false }
-        return
-      }
-      self.queue.async {
-        self.parseUpdates(data, botToken: botToken, code: code, onVerified: onVerified)
-        self.isPolling = false
+      DispatchQueue.main.async {
+        MainActor.assumeIsolated {
+          guard let self else { return }
+          defer { self.isPolling = false }
+          guard let data, error == nil else { return }
+          self.parseUpdates(data, botToken: botToken, code: code, onVerified: onVerified)
+        }
       }
     }
     task.resume()
@@ -81,8 +81,7 @@ final class TelegramVerificationService {
     session.dataTask(with: request).resume()
   }
 
-  /// Must be called on `queue`
-  private func parseUpdates(_ data: Data, botToken: String, code: String, onVerified: @escaping (String) -> Void) {
+  private func parseUpdates(_ data: Data, botToken: String, code: String, onVerified: @escaping @Sendable (String) -> Void) {
     guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
           let ok = json["ok"] as? Bool, ok,
           let results = json["result"] as? [[String: Any]] else { return }
@@ -102,9 +101,7 @@ final class TelegramVerificationService {
         Logger.telegram.info("Verification successful, chat ID: \(chatIdString)")
         stopInternal()
         sendConnectedMessage(botToken: botToken, chatId: chatIdString)
-        DispatchQueue.main.async {
-          onVerified(chatIdString)
-        }
+        onVerified(chatIdString)
         return
       }
     }
