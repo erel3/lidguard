@@ -56,12 +56,18 @@ struct TriggersTabView: View {
     .formStyle(.grouped)
   }
 
+  // macOS 27 renamed the Privacy & Security pane; the TCC permission is unchanged.
+  private var accessibilityPaneName: String {
+    if #available(macOS 27, *) { return "Device Control and Data Access" }
+    return "Accessibility"
+  }
+
   @ViewBuilder
   private var triggersFooter: some View {
     VStack(alignment: .leading, spacing: 6) {
       if isDaemonConnected && !helperAccessibilityGranted {
         HStack(spacing: 4) {
-          Text("Grant Accessibility permission to enable power button detection.")
+          Text("Grant \(accessibilityPaneName) permission to enable power button detection.")
           Button("Open Settings") { onOpenAccessibility() }
             .buttonStyle(.link)
         }

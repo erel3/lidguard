@@ -94,6 +94,11 @@ final class StatusBarController: NSObject, NSMenuDelegate {
     quitItem.target = self
     quitItem.image = menuSymbol("power", color: .secondaryLabelColor)
     menu.addItem(quitItem)
+
+    // macOS 27 hides menu item images by default; the colored icons carry protection state.
+    if #available(macOS 27, *) {
+      menu.items.forEach { $0.preferredImageVisibility = .visible }
+    }
   }
 
   func update(state: ProtectionState, trigger: TheftTrigger?) {
