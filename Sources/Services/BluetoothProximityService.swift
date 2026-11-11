@@ -50,6 +50,11 @@ final class BluetoothProximityService: NSObject {
   private var cachedTrustedDevices: [TrustedBLEDevice] = []
   private var cachedTrustedIDs: Set<UUID> = []
   private var cachedArmDelay: TimeInterval = Config.Bluetooth.defaultArmGracePeriod
+  /// Trusted Wi-Fi counts as one more trusted device for arming only: it never
+  /// enters `nearDevices`, so it cannot trigger `handleDeviceReturned` (disarm).
+  private var cachedTrustedNetworks: Set<String> = []
+  private var trustedWiFiLastSeen: Date?
+  private var onTrustedWiFi = false
 
   // Discovery mode: live RSSI for all peripherals
   private var discoveredDevices: [UUID: (name: String, rssi: Int)] = [:]
@@ -71,6 +76,7 @@ final class BluetoothProximityService: NSObject {
     cachedTrustedDevices = devices
     cachedTrustedIDs = Set(devices.map(\.id))
     cachedArmDelay = max(60.0, SettingsService.shared.bluetoothArmGracePeriod)
+    cachedTrustedNetworks = Set(SettingsService.shared.trustedWiFiNetworks)
     btRecoveryUntil = Date().addingTimeInterval(cachedArmDelay)
     isMonitoring = true
     if centralManager == nil {
@@ -109,6 +115,8 @@ final class BluetoothProximityService: NSObject {
     nearDevices.removeAll()
     allDevicesLostNotified = false
     btRecoveryUntil = nil
+    trustedWiFiLastSeen = nil
+    onTrustedWiFi = false
     if !isDiscoveryMode {
       centralManager = nil
     }
@@ -127,6 +135,8 @@ final class BluetoothProximityService: NSObject {
       nearDevices.removeAll()
       allDevicesLostNotified = false
       btRecoveryUntil = nil
+      trustedWiFiLastSeen = nil
+      onTrustedWiFi = false
     }
     let devices = SettingsService.shared.trustedBLEDevices
     guard !devices.isEmpty else {
@@ -137,6 +147,7 @@ final class BluetoothProximityService: NSObject {
     cachedTrustedDevices = devices
     cachedTrustedIDs = Set(devices.map(\.id))
     cachedArmDelay = max(60.0, SettingsService.shared.bluetoothArmGracePeriod)
+    cachedTrustedNetworks = Set(SettingsService.shared.trustedWiFiNetworks)
     btRecoveryUntil = Date().addingTimeInterval(cachedArmDelay)
     isMonitoring = true
     if centralManager == nil {
@@ -302,6 +313,7 @@ final class BluetoothProximityService: NSObject {
     guard !checkRecoveryCooldown() else { return }
 
     let now = Date()
+    refreshTrustedWiFi(at: now)
     let previousNear = nearDevices
     let currentNear = computeNearDevices(at: now)
     nearDevices = currentNear
@@ -316,12 +328,8 @@ final class BluetoothProximityService: NSObject {
   private func handleAllDevicesLost(previousNear: Set<UUID>, now: Date) {
     guard !allDevicesLostNotified else { return }
     let armDelay = cachedArmDelay
-    let seenTimes = lastSeenTime
-    let allGone = cachedTrustedDevices.allSatisfy { device in
-      guard let seen = seenTimes[device.id] else { return true }
-      return now.timeIntervalSince(seen) >= armDelay
-    }
-    guard allGone else {
+    let lastSeen = cachedTrustedDevices.map { lastSeenTime[$0.id] } + [trustedWiFiLastSeen]
+    guard Self.allTrustedGone(lastSeen: lastSeen, now: now, armDelay: armDelay) else {
       if !previousNear.isEmpty {
         Logger.bluetooth.info("All trusted devices out of range, waiting for arm delay")
         ActivityLog.logAsync(.bluetooth, "All trusted devices out of range, waiting \(Int(armDelay))s")
@@ -346,6 +354,25 @@ final class BluetoothProximityService: NSObject {
     lastAutoArmOffer = nil
     Logger.bluetooth.info("All trusted devices gone for \(Int(armDelay))s, triggering auto-arm")
     ActivityLog.logAsync(.bluetooth, "All devices out of range for \(Int(armDelay))s — auto-arming")
+  }
+
+  /// True when no trusted presence (BLE device or Wi-Fi network) has been seen
+  /// within `armDelay`. A never-seen presence (`nil`) counts as gone.
+  nonisolated static func allTrustedGone(lastSeen: [Date?], now: Date, armDelay: TimeInterval) -> Bool {
+    lastSeen.allSatisfy { seen in
+      guard let seen else { return true }
+      return now.timeIntervalSince(seen) >= armDelay
+    }
+  }
+
+  private func refreshTrustedWiFi(at now: Date) {
+    let connected = TrustedWiFi.isConnectedToTrusted(cachedTrustedNetworks)
+    if connected { trustedWiFiLastSeen = now }
+    guard connected != onTrustedWiFi else { return }
+    onTrustedWiFi = connected
+    let message = connected ? "On trusted Wi-Fi — auto-arm held" : "Left trusted Wi-Fi"
+    Logger.bluetooth.info("\(message)")
+    ActivityLog.logAsync(.bluetooth, message)
   }
 
   private func handleDeviceReturned(currentNear: Set<UUID>) {
@@ -386,11 +413,13 @@ extension BluetoothProximityService: @preconcurrency CBCentralManagerDelegate {
       ActivityLog.logAsync(.bluetooth, "Bluetooth off — all devices considered gone")
       btRecoveryUntil = nil
       stopScanCycle()
-      // Schedule evaluation after arm delay so auto-arm fires even with BT off
+      // Schedule evaluation after arm delay so auto-arm fires even with BT off.
+      // Repeats: trusted Wi-Fi can hold the arm, and it must still fire once
+      // that network is lost. allDevicesLostNotified stops a second arm.
       if isMonitoring && !allDevicesLostNotified {
         let delay = cachedArmDelay
         scanTimer = DispatchSource.makeTimerSource(queue: .main)
-        scanTimer?.schedule(deadline: .now() + delay)
+        scanTimer?.schedule(deadline: .now() + delay, repeating: Self.autoArmRetryInterval)
         scanTimer?.setEventHandler { [weak self] in
           MainActor.assumeIsolated {
             self?.evaluatePresence()

@@ -86,6 +86,7 @@ final class SettingsService {
     case bluetoothAutoArmEnabled = "lidguard.bluetoothAutoArmEnabled"
     case trustedBLEDevices = "lidguard.trustedBLEDevices"
     case bluetoothArmGracePeriod = "lidguard.bluetoothArmGracePeriod"
+    case trustedWiFiNetworks = "lidguard.trustedWiFiNetworks"
   }
 
   private enum KeychainKeys {
@@ -373,6 +374,12 @@ final class SettingsService {
   var bluetoothArmGracePeriod: TimeInterval {
     get { defaults.object(forKey: Keys.bluetoothArmGracePeriod.rawValue) as? TimeInterval ?? Config.Bluetooth.defaultArmGracePeriod }
     set { defaults.set(newValue, forKey: Keys.bluetoothArmGracePeriod.rawValue) }
+  }
+
+  /// SSIDs that block Bluetooth auto-arm while joined. See `TrustedWiFi`.
+  var trustedWiFiNetworks: [String] {
+    get { defaults.stringArray(forKey: Keys.trustedWiFiNetworks.rawValue) ?? [] }
+    set { defaults.set(newValue, forKey: Keys.trustedWiFiNetworks.rawValue) }
   }
 
   var hasTrustedBLEDevices: Bool {

@@ -12,7 +12,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
     case .general: return "General"
     case .triggers: return "Triggers"
     case .protection: return "Protection"
-    case .bluetooth: return "Bluetooth"
+    case .bluetooth: return "Trusted Devices"
     case .notifications: return "Notifications"
     }
   }
@@ -64,6 +64,7 @@ struct SettingsView: View {
   @State private var bluetoothAutoArmEnabled: Bool = false
   @State private var bluetoothArmGracePeriod: Double = 30
   @State private var trustedBLEDevices: [TrustedBLEDevice] = []
+  @State private var trustedWiFiNetworks: [String] = []
 
   // Notifications
   @State private var telegramBotToken: String = ""
@@ -287,6 +288,7 @@ struct SettingsView: View {
       bluetoothArmGracePeriod: $bluetoothArmGracePeriod,
       lockScreenOnBluetoothArm: $lockScreenOnBluetoothArm,
       trustedBLEDevices: $trustedBLEDevices,
+      trustedWiFiNetworks: $trustedWiFiNetworks,
       isDaemonConnected: isDaemonConnected
     )
   }
@@ -345,6 +347,7 @@ struct SettingsView: View {
     bluetoothAutoArmEnabled = settings.bluetoothAutoArmEnabled
     bluetoothArmGracePeriod = settings.bluetoothArmGracePeriod
     trustedBLEDevices = settings.trustedBLEDevices
+    trustedWiFiNetworks = settings.trustedWiFiNetworks
     notifyAutoArm = settings.notifyAutoArm
     notifyProtectionToggle = settings.notifyProtectionToggle
     trackLocation = settings.trackLocation
@@ -391,6 +394,7 @@ struct SettingsView: View {
     settings.bluetoothAutoArmEnabled = bluetoothAutoArmEnabled
     settings.bluetoothArmGracePeriod = bluetoothArmGracePeriod
     settings.trustedBLEDevices = trustedBLEDevices
+    settings.trustedWiFiNetworks = trustedWiFiNetworks
     NotificationCenter.default.post(name: .bluetoothSettingsChanged, object: nil)
 
     settings.notifyAutoArm = notifyAutoArm

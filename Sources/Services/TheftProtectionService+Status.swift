@@ -53,6 +53,11 @@ extension TheftProtectionService {
               bt += "  • \(d.name): not seen\n"
             }
           }
+          let trustedNetworks = Set(settings.trustedWiFiNetworks)
+          if !trustedNetworks.isEmpty {
+            let onTrusted = TrustedWiFi.isConnectedToTrusted(trustedNetworks)
+            bt += "  • Trusted Wi-Fi: \(onTrusted ? "connected (auto-arm held)" : "not connected")\n"
+          }
           self.notificationService.send(
             message: "<b>STATUS: \(status)</b>\n\n\(hardwareInfo)\(bt)\n\(info.formattedMessage)",
             keyboard: keyboard,
