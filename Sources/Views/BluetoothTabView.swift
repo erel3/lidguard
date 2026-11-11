@@ -1,3 +1,4 @@
+import CoreWLAN
 import KeyboardShortcuts
 import SwiftUI
 
@@ -83,24 +84,33 @@ struct BluetoothTabView: View {
     .formStyle(.grouped)
   }
 
+  /// Nothing notifies SwiftUI when the Mac changes networks, so the row
+  /// re-reads the current network on a short timer instead of once per render.
   private var addCurrentNetworkRow: some View {
-    let network = TrustedWiFi.currentNetwork()
-    let blocker: String? = {
-      guard let network else { return "Not connected, or Location permission missing" }
-      if !TrustedWiFi.isSecure(network.security) { return "Current network has no password" }
-      if trustedWiFiNetworks.contains(network.ssid) { return "\(network.ssid) already added" }
-      return nil
-    }()
-    return HStack {
-      Button("Add Current Network") {
-        if let network { trustedWiFiNetworks.append(network.ssid) }
-      }
-      .disabled(blocker != nil)
-      if let blocker {
-        Text(blocker)
-          .font(.footnote)
-          .foregroundStyle(.secondary)
+    TimelineView(.periodic(from: .now, by: 2)) { _ in
+      let blocker = addNetworkBlocker(TrustedWiFi.currentNetwork())
+      HStack {
+        Button("Add Current Network") {
+          // Re-read at click time: the network may have changed since the last tick.
+          let network = TrustedWiFi.currentNetwork()
+          if addNetworkBlocker(network) == nil, let network {
+            trustedWiFiNetworks.append(network.ssid)
+          }
+        }
+        .disabled(blocker != nil)
+        if let blocker {
+          Text(blocker)
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+        }
       }
     }
+  }
+
+  private func addNetworkBlocker(_ network: (ssid: String, security: CWSecurity)?) -> String? {
+    guard let network else { return "Not connected, or Location permission missing" }
+    if !TrustedWiFi.isSecure(network.security) { return "Current network has no password" }
+    if trustedWiFiNetworks.contains(network.ssid) { return "\(network.ssid) already added" }
+    return nil
   }
 }

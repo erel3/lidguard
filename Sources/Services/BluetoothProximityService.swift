@@ -371,7 +371,7 @@ final class BluetoothProximityService: NSObject {
     guard connected != onTrustedWiFi else { return }
     onTrustedWiFi = connected
     let message = connected ? "On trusted Wi-Fi — auto-arm held" : "Left trusted Wi-Fi"
-    Logger.bluetooth.info("\(message)")
+    Logger.bluetooth.info("\(message, privacy: .public)")
     ActivityLog.logAsync(.bluetooth, message)
   }
 
