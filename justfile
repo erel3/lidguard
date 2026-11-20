@@ -98,7 +98,9 @@ _bundle suffix="-dev" entitlements="LidGuard.entitlements" sign_id=codesign_id p
     sed -e "s/<string>1.0.0</<string>$VERSION</" \
         -e "s/<string>1</<string>$BUILD_NUM</" \
         Info.plist > {{bundle}}/Contents/Info.plist
-    cp Resources/AppIcon.icns {{bundle}}/Contents/Resources/ 2>/dev/null || true
+    # Assets.car (CFBundleIconName, what newer macOS reads, e.g. for notifications) plus AppIcon.icns for older readers
+    xcrun actool Resources/Assets.xcassets --compile {{bundle}}/Contents/Resources --platform macosx \
+        --minimum-deployment-target 14.0 --app-icon AppIcon --output-partial-info-plist /dev/null >/dev/null
     cp PrivacyInfo.xcprivacy {{bundle}}/Contents/Resources/ 2>/dev/null || true
     if [ -n "{{provision_profile}}" ]; then
         cp "{{provision_profile}}" {{bundle}}/Contents/embedded.provisionprofile

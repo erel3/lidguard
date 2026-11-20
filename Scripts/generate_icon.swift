@@ -195,71 +195,44 @@ func drawSymbol(ctx: CGContext, rect: CGRect) {
   ctx.restoreGState()
 }
 
-// MARK: - ICNS Generation
+// MARK: - Asset Catalog Generation
 
-struct IconSize {
-  let name: String
-  let pixels: Int
-}
-
-let iconSizes: [IconSize] = [
-  IconSize(name: "icon_16x16.png", pixels: 16),
-  IconSize(name: "icon_16x16@2x.png", pixels: 32),
-  IconSize(name: "icon_32x32.png", pixels: 32),
-  IconSize(name: "icon_32x32@2x.png", pixels: 64),
-  IconSize(name: "icon_128x128.png", pixels: 128),
-  IconSize(name: "icon_128x128@2x.png", pixels: 256),
-  IconSize(name: "icon_256x256.png", pixels: 256),
-  IconSize(name: "icon_256x256@2x.png", pixels: 512),
-  IconSize(name: "icon_512x512.png", pixels: 512),
-  IconSize(name: "icon_512x512@2x.png", pixels: 1024),
-]
-
-func generateICNS() {
+// Writes Resources/Assets.xcassets/AppIcon.appiconset. `just build` compiles it
+// with actool into Assets.car (read through CFBundleIconName by newer macOS,
+// e.g. for notifications) plus AppIcon.icns for older readers.
+func generateIcons() {
   let scriptDir = URL(fileURLWithPath: #file).deletingLastPathComponent()
   let projectDir = scriptDir.deletingLastPathComponent()
   let resourcesDir = projectDir.appendingPathComponent("Resources")
-  let iconsetDir = FileManager.default.temporaryDirectory.appendingPathComponent("LidGuard.iconset")
+  let iconsetDir = resourcesDir.appendingPathComponent("Assets.xcassets/AppIcon.appiconset")
 
-  // Clean up and create iconset directory
   try? FileManager.default.removeItem(at: iconsetDir)
   try! FileManager.default.createDirectory(at: iconsetDir, withIntermediateDirectories: true)
-  try? FileManager.default.createDirectory(at: resourcesDir, withIntermediateDirectories: true)
 
-  // Generate each size
-  for iconSize in iconSizes {
-    let size = CGFloat(iconSize.pixels)
-    let image = drawIcon(size: size)
+  var images: [[String: String]] = []
+  for points in [16, 32, 128, 256, 512] {
+    for scale in [1, 2] {
+      let name = scale == 1 ? "icon_\(points)x\(points).png" : "icon_\(points)x\(points)@2x.png"
+      let pixels = points * scale
+      let image = drawIcon(size: CGFloat(pixels))
 
-    guard let tiffData = image.tiffRepresentation,
-          let bitmap = NSBitmapImageRep(data: tiffData),
-          let pngData = bitmap.representation(using: .png, properties: [:]) else {
-      print("Failed to generate \(iconSize.name)")
-      continue
+      guard let tiffData = image.tiffRepresentation,
+            let bitmap = NSBitmapImageRep(data: tiffData),
+            let pngData = bitmap.representation(using: .png, properties: [:]) else {
+        print("Failed to generate \(name)")
+        continue
+      }
+
+      try! pngData.write(to: iconsetDir.appendingPathComponent(name))
+      images.append(["idiom": "mac", "size": "\(points)x\(points)", "scale": "\(scale)x", "filename": name])
+      print("Generated \(name) (\(pixels)x\(pixels))")
     }
-
-    let filePath = iconsetDir.appendingPathComponent(iconSize.name)
-    try! pngData.write(to: filePath)
-    print("Generated \(iconSize.name) (\(iconSize.pixels)x\(iconSize.pixels))")
   }
 
-  // Convert to .icns using iconutil
-  let outputPath = resourcesDir.appendingPathComponent("AppIcon.icns")
-  let process = Process()
-  process.executableURL = URL(fileURLWithPath: "/usr/bin/iconutil")
-  process.arguments = ["-c", "icns", "-o", outputPath.path, iconsetDir.path]
-
-  do {
-    try process.run()
-    process.waitUntilExit()
-    if process.terminationStatus == 0 {
-      print("Created \(outputPath.path)")
-    } else {
-      print("iconutil failed with status \(process.terminationStatus)")
-    }
-  } catch {
-    print("Failed to run iconutil: \(error)")
-  }
+  let contents: [String: Any] = ["images": images, "info": ["author": "xcode", "version": 1]]
+  try! JSONSerialization.data(withJSONObject: contents, options: [.prettyPrinted, .sortedKeys])
+    .write(to: iconsetDir.appendingPathComponent("Contents.json"))
+  print("Created \(iconsetDir.path)")
 
   // Generate 1024x1024 PNG for App Store Connect (no alpha)
   let appStoreIcon = drawIcon(size: 1024)
@@ -287,11 +260,8 @@ func generateICNS() {
       print("Generated AppIcon.png (256x256, with alpha) for README")
     }
   }
-
-  // Cleanup
-  try? FileManager.default.removeItem(at: iconsetDir)
 }
 
 // MARK: - Main
 
-generateICNS()
+generateIcons()
